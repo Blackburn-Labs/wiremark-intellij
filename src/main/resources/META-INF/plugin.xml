@@ -1,6 +1,6 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
-    <id>dev.wiremark.intellij</id>
+    <id>dev.wiremark</id>
     <name>Wiremark</name>
     <vendor url="https://www.blackburnlabs.com" email="rob@blackburnlabs.com">Blackburn Labs</vendor>
     <description><![CDATA[
