@@ -1,0 +1,19 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>dev.wiremark.intellij</id>
+    <name>Wiremark</name>
+    <vendor url="https://www.blackburnlabs.com" email="rob@blackburnlabs.com">Blackburn Labs</vendor>
+    <description><![CDATA[
+        <p>Renders <a href="https://github.com/Blackburn-Labs/wiremark">wiremark</a> wireframe diagrams inside the IDE.</p>
+        <ul>
+            <li>Live split-editor preview for standalone <code>*.wiremark</code> files.</li>
+            <li>Renders fenced <code>wireframe</code> / <code>wiremark</code> code blocks in the Markdown preview, the way Mermaid diagrams render.</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends optional="true" config-file="wiremark-markdown.xml">org.intellij.plugins.markdown</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+    </extensions>
+</idea-plugin>

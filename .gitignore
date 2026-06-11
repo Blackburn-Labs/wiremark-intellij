@@ -1,0 +1,10 @@
+.DS_Store
+.gradle
+.idea
+.intellijPlatform
+.kotlin
+build
+
+# Project-local
+/tasks/
+.qodo
