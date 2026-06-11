@@ -58,7 +58,7 @@ class IconBridgeTest : BasePlatformTestCase() {
         // lands outside any content root, so the bridge must reject it (this is
         // the isInContent gate, not the unresolvable-path branch).
         val doc = myFixture.addFileToProject("ui/screen.wiremark", "Wireframe\n").virtualFile
-        val outside = createFileAboveContentRoot("secret.svg", "<svg><path d=\"M9 9\"/></svg>")
+        val outside = createFileAboveContentRoot("secret.svg")
         val fileIndex = com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
         // Sanity: the file we want to reject is genuinely outside content.
         assertFalse(
@@ -185,19 +185,22 @@ class IconBridgeTest : BasePlatformTestCase() {
     }
 
     /**
-     * Create a file in the temp filesystem one level ABOVE the content root, so it
-     * is reachable by `../` from a document inside the root but is itself outside
-     * any content root. The light fixture's content root is the temp source dir;
+     * Create an EMPTY file in the temp filesystem one level ABOVE the content root,
+     * so it is reachable by `../` from a document inside the root but is itself
+     * outside any content root. The fixture's content root is the temp source dir;
      * its parent is outside content.
+     *
+     * The file is intentionally left empty: the bridge rejects a traversal target at
+     * the `isInContent` gate BEFORE it reads the file, so the content is irrelevant to
+     * what this test asserts. Writing content here (VfsUtil.saveText) would instead
+     * trip the platform's content-based file-type detection on the in-memory temp FS
+     * -- a flaky "Does not exist: /secret.svg" race during the write -- so we don't.
      */
-    private fun createFileAboveContentRoot(name: String, content: String): VirtualFile {
+    private fun createFileAboveContentRoot(name: String): VirtualFile {
         val contentRoot = com.intellij.openapi.roots.ProjectRootManager.getInstance(project).contentRoots.first()
         val above = contentRoot.parent ?: error("content root has no parent in the test fixture")
         return runWriteAction {
-            val existing = above.findChild(name)
-            val file = existing ?: above.createChildData(this, name)
-            com.intellij.openapi.vfs.VfsUtil.saveText(file, content)
-            file
+            above.findChild(name) ?: above.createChildData(this, name)
         }
     }
 }
