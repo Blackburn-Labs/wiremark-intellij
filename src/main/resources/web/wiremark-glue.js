@@ -54,7 +54,8 @@
   var HOST_CLASS = "wiremark-host"; // our rendered container, sibling of the <pre>
   var SOURCE_HIDDEN_CLASS = "wiremark-source-hidden"; // hides the original <pre>
   var ERROR_CLASS = "wiremark-error"; // hard-error banner (source stays visible)
-  var DIAGNOSTICS_CLASS = "wiremark-diagnostics"; // soft-warning footer
+  // The soft-diagnostics footer markup (class "wiremark-diagnostics") is built by
+  // the shared formatter in wiremark-ui.js; this file no longer names that class.
 
   // Monotonic id source for pairing a fence's <code> to its rendered host. We
   // pair by id rather than DOM adjacency because the incremental updater can
@@ -63,14 +64,21 @@
   // and create a persistent duplicate. An id lookup finds it wherever it lands.
   var nextPairId = 0;
 
-  function escapeHtml(text) {
-    return String(text)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
+  // Shared formatting helpers (wiremark-ui.js, loaded before this script):
+  // escapeHtml() and the diagnostics-footer builder, so both preview surfaces
+  // format identically. A tiny local escapeHtml fallback keeps the glue safe if
+  // the shared module somehow failed to load (never emit unescaped text).
+  var UI = window.WiremarkUI || {};
+  var escapeHtml =
+    UI.escapeHtml ||
+    function (text) {
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    };
 
   // Small, stable, dependency-free string hash (FNV-1a, 32-bit). We hash rather
   // than compare the raw source because the change-detection key has to live in
@@ -115,18 +123,11 @@
   }
 
   // Build the soft-diagnostics footer (warnings/errors collected, not thrown).
-  // Minimal here on purpose; dev4 polishes the presentation in task #4.
+  // Delegates to the shared formatter (wiremark-ui.js) so both surfaces produce
+  // identical `<ul class="wiremark-diagnostics">...` markup; falls back to an
+  // empty footer if the shared module is missing (diagnostics are non-critical).
   function diagnosticsHtml(diagnostics) {
-    if (!diagnostics || !diagnostics.length) return "";
-    var items = diagnostics
-      .map(function (d) {
-        var severity = d && d.severity === "error" ? "error" : "warning";
-        var where = d && d.loc && d.loc.line ? " (line " + d.loc.line + ")" : "";
-        var msg = escapeHtml((d && d.message) || "") + where;
-        return '<li class="wiremark-diagnostic-' + severity + '">' + msg + "</li>";
-      })
-      .join("");
-    return '<ul class="' + DIAGNOSTICS_CLASS + '">' + items + "</ul>";
+    return UI.diagnosticsHtml ? UI.diagnosticsHtml(diagnostics) : "";
   }
 
   // Stable pairing id for a fence's <code>, assigned on first sight. Survives on
@@ -194,13 +195,15 @@
       host.classList.remove(ERROR_CLASS);
     } catch (e) {
       // Hard WiremarkError: show the message and keep the source visible so the
-      // author can see and fix what they typed.
+      // author can see and fix what they typed. The error wrapper markup is the
+      // shared UI.errorHtml (one tested XSS-safe home); local fallback keeps the
+      // same escaped shape if the shared module is somehow absent.
       pre.classList.remove(SOURCE_HIDDEN_CLASS);
       host.classList.add(ERROR_CLASS);
-      host.innerHTML =
-        '<div class="wiremark-error-message">' +
-        escapeHtml((e && e.message) || "Failed to render wireframe.") +
-        "</div>";
+      var message = (e && e.message) || "Failed to render wireframe.";
+      host.innerHTML = UI.errorHtml
+        ? UI.errorHtml(message)
+        : '<div class="wiremark-error-message">' + escapeHtml(message) + "</div>";
     }
 
     // Record what we rendered. Stored on the <code> (a node the incremental
@@ -233,24 +236,12 @@
     }
   }
 
-  // Load-bearing baseline styles only: actually hide the source <pre> we mark,
-  // and let the rendered SVG size itself. Injected once, with a stable id so it
-  // is idempotent and so dev4's diagnostics/error stylesheet (task #4) can layer
-  // richer styling on the same class names without conflicting. Kept here (not in
-  // a shared CSS file dev4 owns) so Part A is correct on its own before #4 lands.
-  var BASE_STYLE_ID = "wiremark-base-style";
-  function ensureBaseStyles() {
-    if (!document.head || document.getElementById(BASE_STYLE_ID)) return;
-    var style = document.createElement("style");
-    style.id = BASE_STYLE_ID;
-    style.textContent =
-      "pre." + SOURCE_HIDDEN_CLASS + "{display:none;}" +
-      "." + HOST_CLASS + " svg{max-width:100%;height:auto;}";
-    document.head.appendChild(style);
-  }
+  // Styling (the load-bearing `pre.wiremark-source-hidden{display:none}` and
+  // `.wiremark-host svg{...}` rules, plus the richer diagnostics/error look) now
+  // lives in the shared wiremark-ui.css, injected as a <link> by the platform via
+  // WiremarkPreviewExtension.styles. The glue no longer injects any <style>.
 
   function start() {
-    ensureBaseStyles();
     renderAll();
     var observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });

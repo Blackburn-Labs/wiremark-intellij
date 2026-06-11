@@ -54,5 +54,9 @@
         <fileType name="Wiremark" extensions="wiremark" language="Wiremark"
                   implementationClass="dev.wiremark.intellij.lang.WiremarkFileType" fieldName="INSTANCE"/>
         <fileEditorProvider implementation="dev.wiremark.intellij.editor.WiremarkSplitEditorProvider"/>
+
+        <!-- Milestone 6 (dev5): in-editor syntax highlighting for the wiremark language. -->
+        <lang.syntaxHighlighterFactory language="Wiremark"
+                  implementationClass="dev.wiremark.intellij.lang.WiremarkSyntaxHighlighterFactory"/>
     </extensions>
 </idea-plugin>

@@ -128,6 +128,10 @@ tasks.named("check") {
 // DOM shim -- exercises wiremark-glue.js idempotency, content-change re-render,
 // error handling, and scroll-sync attribute carrying. Wired into `check`.
 // ---------------------------------------------------------------------------
+// Shared UI helper used by both the glue and the split-preview entry; an input
+// to their tests (the tests load it into the sandbox).
+val uiSourceFile = layout.projectDirectory.file("src/main/resources/web/wiremark-ui.js")
+
 val glueTestFile = layout.projectDirectory.file("src/test/js/wiremark-glue.test.mjs")
 val glueSourceFile = layout.projectDirectory.file("src/main/resources/web/wiremark-glue.js")
 val glueTestMarker = layout.buildDirectory.file("generated/wiremarkGlueTest/.glue-test-passed")
@@ -139,6 +143,7 @@ val testWiremarkGlue by tasks.registering(Exec::class) {
 
     inputs.file(glueTestFile)
     inputs.file(glueSourceFile)
+    inputs.file(uiSourceFile)
     val marker = glueTestMarker
     outputs.file(marker)
     doLast {
@@ -147,6 +152,32 @@ val testWiremarkGlue by tasks.registering(Exec::class) {
 }
 tasks.named("check") {
     dependsOn(testWiremarkGlue)
+}
+
+// ---------------------------------------------------------------------------
+// dev4 (task #4): tests for the shared diagnostics/error UI helper.
+//
+// Pure `node:test` against the wiremark-ui.js IIFE (escapeHtml, diagnosticsHtml,
+// normalizeDiagnostic, messageOf) -- no DOM needed. Wired into `check`.
+// ---------------------------------------------------------------------------
+val uiTestFile = layout.projectDirectory.file("src/test/js/wiremark-ui.test.mjs")
+val uiTestMarker = layout.buildDirectory.file("generated/wiremarkUiTest/.ui-test-passed")
+
+val testWiremarkUi by tasks.registering(Exec::class) {
+    description = "Test the shared diagnostics/error UI helper (node --test)."
+    workingDir = layout.projectDirectory.asFile
+    commandLine("node", "--test", uiTestFile.asFile.absolutePath)
+
+    inputs.file(uiTestFile)
+    inputs.file(uiSourceFile)
+    val marker = uiTestMarker
+    outputs.file(marker)
+    doLast {
+        marker.get().asFile.writeText("ok\n")
+    }
+}
+tasks.named("check") {
+    dependsOn(testWiremarkUi)
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +199,7 @@ val testWiremarkPreview by tasks.registering(Exec::class) {
 
     inputs.file(previewTestFile)
     inputs.file(previewSourceFile)
+    inputs.file(uiSourceFile)
     val marker = previewTestMarker
     outputs.file(marker)
     doLast {

@@ -82,13 +82,22 @@ function makeDocument() {
   };
 }
 
-// Run the preview IIFE in a fresh context, returning the window it populated.
+// The shared helper module (wiremark-ui.js) defines window.WiremarkUI, which the
+// preview script now uses for escapeHtml / diagnosticsHtml / messageOf. We load
+// it into the same context first so the preview exercises the real shared code
+// (its formatting is what both surfaces share).
+const UI_PATH = join(here, "../../main/resources/web/wiremark-ui.js");
+const uiSource = readFileSync(UI_PATH, "utf8");
+
+// Run the shared UI helper + the preview IIFE in a fresh context, returning the
+// window it populated.
 function loadPreview(wiremarkStub) {
   const document = makeDocument();
   const window = { wiremark: wiremarkStub };
   const sandbox = { window, document };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
+  vm.runInContext(uiSource, sandbox); // defines window.WiremarkUI
   vm.runInContext(previewSource, sandbox);
   return { window, document };
 }
@@ -113,7 +122,7 @@ test("renderWiremark swaps in the SVG and clears any error", () => {
   assert.equal(document.getElementById("wiremark-placeholder").style.display, "none");
 });
 
-test("soft diagnostics render into the diagnostics container", () => {
+test("soft diagnostics render into the diagnostics container (shared builder markup)", () => {
   const { window, document } = loadPreview({
     render: () => ({
       svg: "<svg></svg>",
@@ -121,10 +130,20 @@ test("soft diagnostics render into the diagnostics container", () => {
     }),
   });
   window.renderWiremark("Frame");
+  // renderDiagnostics now delegates to window.WiremarkUI.diagnosticsHtml, which
+  // emits the same `<ul class="wiremark-diagnostics">` markup as the markdown
+  // surface (so both look identical). The container holds that markup as HTML.
   const diags = document.getElementById("wiremark-diagnostics");
-  assert.equal(diags.children.length, 1); // a <ul>
-  assert.equal(diags.children[0].children.length, 1); // one <li>
-  assert.match(diags.children[0].children[0].textContent, /missing target \(line 3\)/);
+  assert.match(diags.innerHTML, /<ul class="wiremark-diagnostics">/);
+  assert.match(diags.innerHTML, /<li class="wiremark-diagnostic-warning">missing target \(line 3\)<\/li>/);
+});
+
+test("no diagnostics clears the container to empty", () => {
+  const { window, document } = loadPreview({
+    render: () => ({ svg: "<svg></svg>", diagnostics: [] }),
+  });
+  window.renderWiremark("Frame");
+  assert.equal(document.getElementById("wiremark-diagnostics").innerHTML, "");
 });
 
 test("a thrown WiremarkError surfaces its message (not instanceof Error)", () => {
@@ -139,7 +158,24 @@ test("a thrown WiremarkError surfaces its message (not instanceof Error)", () =>
   window.renderWiremark("bad source");
   const box = document.getElementById("wiremark-error");
   assert.equal(box.classList.contains("visible"), true);
-  assert.equal(box.textContent, "tabs are not allowed in indentation (line 2)");
+  // The banner wraps the (escaped) message in .wiremark-error-message, matching
+  // the markdown surface; the shared CSS adds the "Error:" lead-in via ::before.
+  assert.match(
+    box.innerHTML,
+    /<div class="wiremark-error-message">tabs are not allowed in indentation \(line 2\)<\/div>/,
+  );
+});
+
+test("the error banner escapes HTML in the message (XSS-safe)", () => {
+  const { window, document } = loadPreview({
+    render: () => {
+      throw makeWiremarkError("<img src=x onerror=alert(1)>");
+    },
+  });
+  window.renderWiremark("bad source");
+  const box = document.getElementById("wiremark-error");
+  assert.ok(!/<img/.test(box.innerHTML), "raw <img> must not appear in the banner");
+  assert.match(box.innerHTML, /&lt;img/);
 });
 
 test("error keeps the last good SVG; next success clears the banner", () => {

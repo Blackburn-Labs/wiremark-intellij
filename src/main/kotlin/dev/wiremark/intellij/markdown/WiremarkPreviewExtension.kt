@@ -14,12 +14,18 @@ import org.intellij.plugins.markdown.ui.preview.ResourceProvider
  * preview extensions (e.g. ProcessLinksExtension) use; the extension serves its
  * own scripts as a [ResourceProvider].
  *
- * The two served scripts, in load order:
+ * The three served scripts, in load order:
  *  1. [WIREMARK_BUNDLE] - dev1's esbuild IIFE bundle of @wiremark/core, exposing
  *     the global `wiremark` with a synchronous `render(src) -> { svg, diagnostics }`.
  *     Generated at build time into the `/web` resource root; never committed.
- *  2. [WIREMARK_GLUE] - hand-written glue that observes the preview DOM and swaps
+ *  2. [WIREMARK_UI] - shared diagnostics/error formatting helpers (dev4), exposing
+ *     `window.WiremarkUI`. Loaded before the glue so it can use those helpers.
+ *  3. [WIREMARK_GLUE] - hand-written glue that observes the preview DOM and swaps
  *     wireframe fences for rendered SVGs (src/main/resources/web/wiremark-glue.js).
+ *
+ * Plus one served stylesheet, injected as a <link> by the platform:
+ *  - [WIREMARK_UI_CSS] - shared diagnostics/error styling (dev4), the single
+ *    source of truth shared with the *.wiremark split-editor preview.
  *
  * Resource names are classpath-absolute (leading `/web/...`) so
  * [ResourceProvider.loadInternalResource] -> `Class.getResourceAsStream` resolves
@@ -32,16 +38,21 @@ internal class WiremarkPreviewExtension(
     @Suppress("unused") private val panel: MarkdownHtmlPanel?,
 ) : MarkdownBrowserPreviewExtension, ResourceProvider {
 
-    override val scripts: List<String> = listOf(WIREMARK_BUNDLE, WIREMARK_GLUE)
+    override val scripts: List<String> = listOf(WIREMARK_BUNDLE, WIREMARK_UI, WIREMARK_GLUE)
+
+    override val styles: List<String> = listOf(WIREMARK_UI_CSS)
 
     override val resourceProvider: ResourceProvider = this
 
-    override fun canProvide(resourceName: String): Boolean = resourceName in scripts
+    // Everything we declare in scripts + styles is served from our own resources.
+    private val servedResources: Set<String> = (scripts + styles).toSet()
+
+    override fun canProvide(resourceName: String): Boolean = resourceName in servedResources
 
     override fun loadResource(resourceName: String): ResourceProvider.Resource? {
-        if (resourceName !in scripts) return null
+        if (resourceName !in servedResources) return null
         // Content-Type is left null on purpose: the preview server guesses it from
-        // the ".js" suffix (application/javascript; charset=utf-8).
+        // the file suffix (".js" -> application/javascript, ".css" -> text/css).
         return ResourceProvider.loadInternalResource(
             WiremarkPreviewExtension::class.java,
             "/web/$resourceName",
@@ -58,6 +69,8 @@ internal class WiremarkPreviewExtension(
 
     companion object {
         const val WIREMARK_BUNDLE = "wiremark.browser.js"
+        const val WIREMARK_UI = "wiremark-ui.js"
         const val WIREMARK_GLUE = "wiremark-glue.js"
+        const val WIREMARK_UI_CSS = "wiremark-ui.css"
     }
 }

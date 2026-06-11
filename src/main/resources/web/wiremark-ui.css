@@ -1,0 +1,194 @@
+/*
+ * Shared diagnostics / error UI styling for BOTH wiremark preview surfaces
+ * (dev4, task #4). Single source of truth so the markdown preview and the
+ * *.wiremark split-editor preview present identically.
+ *
+ * How each surface pulls this in:
+ *   - Markdown preview: WiremarkPreviewExtension lists this file in getStyles(),
+ *     so the platform injects it as a <link> and serves it via the same
+ *     ResourceProvider as the scripts.
+ *   - Split-editor preview: the Kotlin side (WiremarkPreviewHtml) inlines the
+ *     contents into the shell's <style> at load time (JBCefBrowser.loadHTML
+ *     serves from an opaque origin, so a <link> could not resolve there).
+ *
+ * Theme: the markdown preview exposes IDE theme CSS variables and the split
+ * preview sets `color-scheme: light dark`, but the specific variable names
+ * differ across IDE versions and between the two surfaces. Rather than depend on
+ * any one being present, the rules below use theme-agnostic colors that read on
+ * either a light or a dark host: translucent gray overlays for the diagnostics
+ * surround (so they pick up the panel behind them) and fixed mid-tone amber/red
+ * for severity (legible on both backgrounds). The host card is deliberately
+ * paper-white (see the SVG note below), not theme-derived.
+ *
+ * DARK-THEME TREATMENT OF THE SVG (PLAN open question, decided here):
+ * the wiremark core SVG is self-contained -- it paints its own white paper
+ * background (#ffffff) and dark ink strokes (#22303f), and does NOT use
+ * currentColor for its strokes. So we deliberately do NOT invert or recolor it.
+ * Instead the host is a white/paper-colored card with a soft border, so the
+ * white SVG sits on matching paper in every theme (the same way Mermaid
+ * diagrams stay light-on-white in a dark IDE). Inverting would wreck the
+ * hand-drawn look and mis-handle the palette's accent/fill colors.
+ */
+
+/* --- Load-bearing base rules (migrated from wiremark-glue.js per dev3's
+   contract; these MUST exist for Part A to be correct) --------------------- */
+
+/* Hide the original markdown fence <pre> once we render beside it (we keep it
+   in the DOM so the incremental updater doesn't fight us; see the glue). */
+pre.wiremark-source-hidden {
+  display: none;
+}
+
+/* --- Rendered host card --------------------------------------------------- */
+
+/* The card the SVG (or an error banner) lives in. Paper-colored so the
+   self-contained white SVG always sits on matching paper, light or dark. */
+.wiremark-host {
+  display: block;
+  margin: 4px 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  /* A faint lift so the white card reads as intentional against a dark panel. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.wiremark-host svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Split-preview host (#wiremark-host) starts empty before the first render;
+   collapse the paper card until it actually holds an SVG so no stray white box
+   shows next to the placeholder. (The markdown host is created only when there
+   is content to put in it, so it is never empty.) */
+#wiremark-host:empty {
+  display: none;
+}
+
+/* --- Soft diagnostics (warnings/errors collected, not thrown) -------------- */
+
+/* A compact footer listing collected diagnostics under the SVG. Subtle by
+   default; the per-severity rules tint the marker and text. */
+.wiremark-diagnostics {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: rgba(127, 127, 127, 0.1);
+  border: 1px solid rgba(127, 127, 127, 0.22);
+  color: #5a6470;
+}
+
+/* Container in the split-editor shell (a <div> wrapping the <ul>). When empty
+   it collapses; the inner <ul> carries the visible styling above. */
+#wiremark-diagnostics:empty {
+  display: none;
+}
+
+.wiremark-diagnostics li {
+  position: relative;
+  padding-left: 16px;
+  margin: 2px 0;
+}
+
+/* A colored dot marker per item so severity reads at a glance without relying
+   on color alone for meaning (text still says "warning"/"error"). */
+.wiremark-diagnostics li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.5em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.wiremark-diagnostic-warning {
+  color: #9a6700;
+}
+
+.wiremark-diagnostic-error {
+  color: #b23535;
+}
+
+/* --- Hard error (WiremarkError thrown) ------------------------------------ */
+
+/*
+ * Two surfaces present a hard error slightly differently, but share one look:
+ *
+ *   - Markdown preview: the host div gets class `wiremark-error` and contains a
+ *     `.wiremark-error-message`; the source <pre> stays visible so the author
+ *     can fix it. The host is NOT the paper card in this state -- it is the
+ *     error banner itself.
+ *
+ *   - Split preview: `#wiremark-error` is a separate banner toggled with
+ *     `.visible`, shown OVER the last good SVG (the panel never blanks).
+ *
+ * Both use the same red treatment below.
+ */
+
+.wiremark-error,
+#wiremark-error {
+  box-sizing: border-box;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(190, 50, 50, 0.12);
+  color: #b23535;
+  border: 1px solid rgba(190, 50, 50, 0.45);
+}
+
+/* Markdown host-as-error-banner: it replaces the paper card styling, so reset
+   the card-specific bits the .wiremark-host rule set. */
+.wiremark-host.wiremark-error {
+  background: rgba(190, 50, 50, 0.12);
+  box-shadow: none;
+  padding: 8px 10px;
+}
+
+.wiremark-error-message {
+  font-weight: 600;
+}
+
+/* A small "Error" lead-in before the message, added via CSS so the JS only has
+   to emit the (escaped) message text. */
+.wiremark-error-message::before {
+  content: "Error: ";
+  font-weight: 700;
+}
+
+/* Split-preview shell: #wiremark-root is the positioning context so the banner
+   can overlay the last good SVG. dev2's shell already pads #wiremark-root; we
+   only add the positioning here. */
+#wiremark-root {
+  position: relative;
+}
+
+/* Split-preview banner: positioned absolutely over the last good SVG, so a
+   transient parse error never blanks the panel. It sits inside #wiremark-root's
+   padding box, near the top. Hidden until the JS adds `.visible`. */
+#wiremark-error {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 2;
+  display: none;
+  margin: 0;
+  padding: 8px 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+#wiremark-error.visible {
+  display: block;
+}

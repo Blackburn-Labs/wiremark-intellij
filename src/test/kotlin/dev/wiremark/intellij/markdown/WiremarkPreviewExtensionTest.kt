@@ -22,14 +22,16 @@ class WiremarkPreviewExtensionTest : BasePlatformTestCase() {
         )
     }
 
-    fun testExtensionDeclaresBothScriptsInLoadOrder() {
+    fun testExtensionDeclaresScriptsInLoadOrder() {
         val extension = WiremarkPreviewExtension(panel = null)
         try {
             val scripts = extension.scripts
             assertEquals(
-                "bundle must load before glue (glue depends on the wiremark global)",
+                "load order: core bundle, then the shared UI helper (window.WiremarkUI), " +
+                    "then the glue -- the glue depends on both globals",
                 listOf(
                     WiremarkPreviewExtension.WIREMARK_BUNDLE,
+                    WiremarkPreviewExtension.WIREMARK_UI,
                     WiremarkPreviewExtension.WIREMARK_GLUE,
                 ),
                 scripts,
@@ -41,11 +43,26 @@ class WiremarkPreviewExtensionTest : BasePlatformTestCase() {
         }
     }
 
-    fun testCanProvideOnlyDeclaredScripts() {
+    fun testExtensionDeclaresSharedStylesheet() {
+        val extension = WiremarkPreviewExtension(panel = null)
+        try {
+            assertEquals(
+                "the shared diagnostics/error stylesheet must be injected as a <link>",
+                listOf(WiremarkPreviewExtension.WIREMARK_UI_CSS),
+                extension.styles,
+            )
+        } finally {
+            extension.dispose()
+        }
+    }
+
+    fun testCanProvideOnlyDeclaredResources() {
         val extension = WiremarkPreviewExtension(panel = null)
         try {
             assertTrue(extension.canProvide(WiremarkPreviewExtension.WIREMARK_BUNDLE))
+            assertTrue(extension.canProvide(WiremarkPreviewExtension.WIREMARK_UI))
             assertTrue(extension.canProvide(WiremarkPreviewExtension.WIREMARK_GLUE))
+            assertTrue(extension.canProvide(WiremarkPreviewExtension.WIREMARK_UI_CSS))
             assertFalse(extension.canProvide("not-served.js"))
             assertFalse(extension.canProvide("/web/wiremark-glue.js"))
         } finally {
@@ -62,6 +79,27 @@ class WiremarkPreviewExtensionTest : BasePlatformTestCase() {
             assertTrue(
                 "glue should reference the wiremark global render entry point",
                 text.contains("wiremark.render"),
+            )
+        } finally {
+            extension.dispose()
+        }
+    }
+
+    fun testSharedUiResourcesResolve() {
+        val extension = WiremarkPreviewExtension(panel = null)
+        try {
+            val js = extension.loadResource(WiremarkPreviewExtension.WIREMARK_UI)
+            assertNotNull("wiremark-ui.js must be packaged at /web/", js)
+            assertTrue(
+                "shared helper must expose window.WiremarkUI",
+                String(js!!.content, Charsets.UTF_8).contains("window.WiremarkUI"),
+            )
+
+            val css = extension.loadResource(WiremarkPreviewExtension.WIREMARK_UI_CSS)
+            assertNotNull("wiremark-ui.css must be packaged at /web/", css)
+            assertTrue(
+                "shared stylesheet must define the diagnostics class",
+                String(css!!.content, Charsets.UTF_8).contains(".wiremark-diagnostics"),
             )
         } finally {
             extension.dispose()

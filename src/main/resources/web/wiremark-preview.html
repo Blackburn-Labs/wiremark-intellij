@@ -12,6 +12,9 @@
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;">
   <style id="wiremark-base-style">
+    /* Structural shell rules only. The diagnostics/error/host styling is shared
+       with the markdown preview and lives in wiremark-ui.css, inlined at the
+       WIREMARK_UI_CSS placeholder below by WiremarkPreviewHtml. */
     :root { color-scheme: light dark; }
     html, body {
       margin: 0;
@@ -25,38 +28,25 @@
       min-height: 100%;
       padding: 12px;
     }
-    #wiremark-host { display: block; }
-    #wiremark-host svg { max-width: 100%; height: auto; }
-    /* Diagnostics / error containers. dev4 owns the polished styling; these are
-       structural placeholders so the markup and ids are stable. */
-    #wiremark-error {
-      display: none;
-      margin: 0 0 10px 0;
-      padding: 8px 10px;
-      border-radius: 4px;
-      font-size: 12px;
-      white-space: pre-wrap;
-      background: rgba(190, 50, 50, 0.12);
-      color: #b23535;
-      border: 1px solid rgba(190, 50, 50, 0.4);
-    }
-    #wiremark-error.visible { display: block; }
-    #wiremark-diagnostics { margin-top: 10px; }
     #wiremark-placeholder {
       opacity: 0.55;
       font-size: 12px;
       padding: 4px 0;
     }
+    /* WIREMARK_UI_CSS */
   </style>
 </head>
 <body>
   <div id="wiremark-root">
-    <div id="wiremark-error" role="alert"></div>
-    <div id="wiremark-host"></div>
+    <div id="wiremark-error" class="wiremark-error" role="alert"></div>
+    <!-- Carries class="wiremark-host" so the shared paper-card styling (white
+         card under the self-contained SVG) applies on this surface too. -->
+    <div id="wiremark-host" class="wiremark-host"></div>
     <div id="wiremark-diagnostics"></div>
     <div id="wiremark-placeholder">Wiremark preview &mdash; start typing to render.</div>
   </div>
   <!-- WIREMARK_BUNDLE -->
+  <!-- WIREMARK_UI_JS -->
   <!-- WIREMARK_PREVIEW_JS -->
 </body>
 </html>

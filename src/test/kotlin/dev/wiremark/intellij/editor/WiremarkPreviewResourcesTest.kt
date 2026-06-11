@@ -1,5 +1,6 @@
 package dev.wiremark.intellij.editor
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,5 +33,11 @@ class WiremarkPreviewResourcesTest {
         assertTrue("must contain the render host", html.contains("id=\"wiremark-host\""))
         assertTrue("must contain the error banner element", html.contains("id=\"wiremark-error\""))
         assertTrue("must contain the diagnostics container", html.contains("id=\"wiremark-diagnostics\""))
+        // dev4: the shared diagnostics/error helper + stylesheet are inlined too.
+        assertTrue("must define the shared window.WiremarkUI helper", html.contains("window.WiremarkUI"))
+        assertTrue("must inline the shared diagnostics/error CSS", html.contains(".wiremark-diagnostics"))
+        // No placeholder may survive in the assembled document.
+        assertFalse("ui-css placeholder must be filled", html.contains(WiremarkPreviewHtml.UI_CSS_PLACEHOLDER))
+        assertFalse("ui-js placeholder must be filled", html.contains(WiremarkPreviewHtml.UI_JS_PLACEHOLDER))
     }
 }

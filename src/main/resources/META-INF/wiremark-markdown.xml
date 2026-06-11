@@ -5,5 +5,10 @@
              ```wireframe / ```wiremark fences render as SVGs. -->
         <browserPreviewExtensionProvider
             implementation="dev.wiremark.intellij.markdown.WiremarkPreviewExtension$Provider"/>
+
+        <!-- Milestone 6 (dev5): map ```wireframe / ```wiremark fence info strings to the
+             Wiremark language so the fence body gets in-editor syntax highlighting. -->
+        <fenceLanguageProvider
+            implementation="dev.wiremark.intellij.markdown.WiremarkFenceLanguageProvider"/>
     </extensions>
 </idea-plugin>

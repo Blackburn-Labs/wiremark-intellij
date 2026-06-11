@@ -22,6 +22,11 @@ import vm from "node:vm";
 const here = dirname(fileURLToPath(import.meta.url));
 const GLUE_PATH = join(here, "../../main/resources/web/wiremark-glue.js");
 const glueSource = readFileSync(GLUE_PATH, "utf8");
+// The glue now formats diagnostics/escapes text via the shared helper module
+// (window.WiremarkUI). Load it into the same sandbox so the glue exercises the
+// real shared code, exactly as it does in the browser.
+const UI_PATH = join(here, "../../main/resources/web/wiremark-ui.js");
+const uiSource = readFileSync(UI_PATH, "utf8");
 
 // --- Minimal DOM ----------------------------------------------------------
 
@@ -236,6 +241,9 @@ function runGlue(doc, wiremark) {
     setTimeout: (fn) => fn(),
   };
   vm.createContext(sandbox);
+  // Shared helper first (defines window.WiremarkUI), then the glue -- matching
+  // the browser load order (wiremark-ui.js is listed before wiremark-glue.js).
+  vm.runInContext(uiSource, sandbox, { filename: "wiremark-ui.js" });
   vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
   return sandbox;
 }
@@ -492,17 +500,18 @@ test("carries data-line from the source <pre> to the host for scroll sync", () =
   assert.equal(hostAfter(pre).getAttribute("data-line"), "42");
 });
 
-test("injects the load-bearing base stylesheet exactly once", () => {
+test("does not inject any <style> (styling moved to the shared wiremark-ui.css)", () => {
+  // The load-bearing base rules and the richer diagnostics/error styling now
+  // live in wiremark-ui.css (injected as a <link> by the platform via
+  // WiremarkPreviewExtension.styles). The glue must not inject a <style> of its
+  // own anymore -- doing so would re-create the duplicate dev3's contract warned
+  // against.
   const doc = makeDocument();
   addFence(doc, "wireframe", "Frame");
-  const sandbox = runGlue(doc, { render: () => ({ svg: "<svg/>", diagnostics: [] }) });
-
-  const styles = doc.head.children.filter((c) => c.tagName === "STYLE");
-  assert.equal(styles.length, 1, "exactly one <style> injected");
-  assert.equal(styles[0].id, "wiremark-base-style");
-  assert.match(styles[0].textContent, /pre\.wiremark-source-hidden\{display:none;\}/);
-
-  // A second pass must not inject a duplicate stylesheet.
-  vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
-  assert.equal(doc.head.children.filter((c) => c.tagName === "STYLE").length, 1);
+  runGlue(doc, { render: () => ({ svg: "<svg/>", diagnostics: [] }) });
+  assert.equal(
+    doc.head.children.filter((c) => c.tagName === "STYLE").length,
+    0,
+    "glue injects no <style>",
+  );
 });

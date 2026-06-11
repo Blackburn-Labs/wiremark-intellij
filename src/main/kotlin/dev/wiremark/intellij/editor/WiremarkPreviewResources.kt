@@ -13,6 +13,10 @@ object WiremarkPreviewResources {
     private const val TEMPLATE_PATH = "/web/wiremark-preview.html"
     private const val PREVIEW_JS_PATH = "/web/wiremark-preview.js"
 
+    /** Shared diagnostics/error helpers + styling, also used by the markdown preview. */
+    private const val UI_JS_PATH = "/web/wiremark-ui.js"
+    private const val UI_CSS_PATH = "/web/wiremark-ui.css"
+
     /** Runtime classpath location of dev1's generated browser bundle. */
     private const val BUNDLE_PATH = "/web/wiremark.browser.js"
 
@@ -28,17 +32,20 @@ object WiremarkPreviewResources {
     fun buildPreviewHtml(): String {
         val template = readResource(TEMPLATE_PATH)
         val previewJs = readResource(PREVIEW_JS_PATH)
+        val uiJs = readResource(UI_JS_PATH)
+        val uiCss = readResource(UI_CSS_PATH)
         val bundleJs = readResource(BUNDLE_PATH)
 
-        if (template == null || previewJs == null || bundleJs == null) {
+        if (template == null || previewJs == null || uiJs == null || uiCss == null || bundleJs == null) {
             LOG.warn(
                 "Wiremark preview assets missing " +
-                    "(template=${template != null}, previewJs=${previewJs != null}, bundle=${bundleJs != null}); " +
+                    "(template=${template != null}, previewJs=${previewJs != null}, " +
+                    "uiJs=${uiJs != null}, uiCss=${uiCss != null}, bundle=${bundleJs != null}); " +
                     "showing fallback panel.",
             )
             return fallbackHtml(bundleMissing = bundleJs == null)
         }
-        return WiremarkPreviewHtml.build(template, bundleJs, previewJs)
+        return WiremarkPreviewHtml.build(template, bundleJs, uiJs, previewJs, uiCss)
     }
 
     private fun fallbackHtml(bundleMissing: Boolean): String {

@@ -12,6 +12,12 @@
 (function () {
   "use strict";
 
+  // Shared formatting helpers (wiremark-ui.js, inlined before this script by
+  // WiremarkPreviewHtml): escapeHtml, the diagnostics-footer builder, and
+  // messageOf. Local fallbacks keep the preview functional if the shared module
+  // somehow failed to load.
+  var UI = window.WiremarkUI || {};
+
   function el(id) {
     return document.getElementById(id);
   }
@@ -20,6 +26,7 @@
   // WiremarkError (dev1 contract) always has .message; for an unexpected
   // throwable we avoid "[object Object]" by falling back to a generic notice.
   function messageOf(e) {
+    if (UI.messageOf) return UI.messageOf(e, "Wiremark failed to render this source.");
     if (e && typeof e.message === "string" && e.message) return e.message;
     if (typeof e === "string" && e) return e;
     return "Wiremark failed to render this source.";
@@ -28,14 +35,30 @@
   function showError(message) {
     var box = el("wiremark-error");
     if (!box) return;
-    box.textContent = message;
+    // Wrap in .wiremark-error-message so this banner matches the markdown
+    // surface (the shared CSS adds the "Error:" lead-in via ::before). Uses the
+    // shared UI.errorHtml (one tested XSS-safe home); the local fallback keeps
+    // the same escaped shape if the shared module is somehow absent.
+    if (UI.errorHtml) {
+      box.innerHTML = UI.errorHtml(message);
+    } else {
+      var escape = function (s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      };
+      box.innerHTML = '<div class="wiremark-error-message">' + escape(message) + "</div>";
+    }
     box.classList.add("visible");
   }
 
   function clearError() {
     var box = el("wiremark-error");
     if (!box) return;
-    box.textContent = "";
+    box.innerHTML = "";
     box.classList.remove("visible");
   }
 
@@ -44,23 +67,14 @@
     if (ph) ph.style.display = "none";
   }
 
-  // Minimal, structural diagnostics rendering. dev4 replaces the markup; the
-  // container id and the { severity, message, loc } shape are the stable parts.
+  // Render the soft-diagnostics footer into #wiremark-diagnostics, using the
+  // shared builder so this surface and the markdown preview emit identical
+  // `<ul class="wiremark-diagnostics">...` markup (the builder escapes messages).
+  // Cleared to empty when there are none, so the container's :empty rule hides it.
   function renderDiagnostics(diagnostics) {
     var host = el("wiremark-diagnostics");
     if (!host) return;
-    host.innerHTML = "";
-    if (!diagnostics || !diagnostics.length) return;
-    var list = document.createElement("ul");
-    list.className = "wiremark-diagnostic-list";
-    diagnostics.forEach(function (d) {
-      var item = document.createElement("li");
-      item.className = "wiremark-diagnostic wiremark-diagnostic-" + (d.severity || "warning");
-      var where = d.loc && d.loc.line ? " (line " + d.loc.line + ")" : "";
-      item.textContent = (d.severity || "warning") + ": " + d.message + where;
-      list.appendChild(item);
-    });
-    host.appendChild(list);
+    host.innerHTML = UI.diagnosticsHtml ? UI.diagnosticsHtml(diagnostics) : "";
   }
 
   // window.renderWiremark(src): called from Kotlin via executeJavaScript.
