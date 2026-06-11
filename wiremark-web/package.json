@@ -1,0 +1,18 @@
+{
+  "name": "wiremark-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build the self-contained browser (IIFE) bundle of @wiremark/core that the IntelliJ plugin loads into JCEF. Option B in tasks/PLAN.md: this repo bundles a pinned @wiremark/core itself, since upstream does not yet ship dist/wiremark.browser.js.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@wiremark/core": "0.0.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

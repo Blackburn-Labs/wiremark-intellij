@@ -4,16 +4,55 @@
     <name>Wiremark</name>
     <vendor url="https://www.blackburnlabs.com" email="rob@blackburnlabs.com">Blackburn Labs</vendor>
     <description><![CDATA[
-        <p>Renders <a href="https://github.com/Blackburn-Labs/wiremark">wiremark</a> wireframe diagrams inside the IDE.</p>
+        <p>
+            Sketch user interfaces as plain text and see them rendered as hand-drawn,
+            Balsamiq-style wireframes right inside your IDE.
+            <b>Wiremark</b> brings <a href="https://wiremark.dev">wiremark</a> &mdash;
+            a concise, markdown-embeddable wireframing format (think "YAML-flavored
+            <a href="https://mui.com">Material UI</a>") &mdash; to IntelliJ IDEA,
+            WebStorm, PyCharm, and every other JetBrains IDE.
+        </p>
+
+        <p>It renders wiremark in two places:</p>
         <ul>
-            <li>Live split-editor preview for standalone <code>*.wiremark</code> files.</li>
-            <li>Renders fenced <code>wireframe</code> / <code>wiremark</code> code blocks in the Markdown preview, the way Mermaid diagrams render.</li>
+            <li>
+                <b>Standalone <code>*.wiremark</code> files</b> open in a split
+                text-and-preview editor with a live, hand-drawn SVG that updates
+                as you type &mdash; the same editing experience the IDE gives
+                Markdown and SVG files.
+            </li>
+            <li>
+                <b>Fenced code blocks in Markdown.</b> A <code>```wireframe</code>
+                (or <code>```wiremark</code>) block in any <code>.md</code> file
+                renders as a wireframe in the Markdown preview, exactly the way
+                Mermaid diagrams do.
+            </li>
         </ul>
+
+        <p>
+            Wireframes are written by indentation, so they read like an outline and
+            diff cleanly in version control. Multi-frame files automatically render
+            as a flow chart, with connectors drawn between screens you link with
+            <code>to=#id</code>. Rendering happens entirely inside the IDE &mdash;
+            no Node.js, no external tools, and no network calls.
+        </p>
+
+        <p>
+            New to the format? The
+            <a href="https://docs.wiremark.dev">wiremark documentation</a> has the
+            language guide, component reference, and icon gallery. The engine is
+            open source at
+            <a href="https://github.com/Blackburn-Labs/wiremark">github.com/Blackburn-Labs/wiremark</a>.
+        </p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
     <depends optional="true" config-file="wiremark-markdown.xml">org.intellij.plugins.markdown</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <!-- Part B (dev2): .wiremark file type + split text/preview editor. -->
+        <fileType name="Wiremark" extensions="wiremark" language="Wiremark"
+                  implementationClass="dev.wiremark.intellij.lang.WiremarkFileType" fieldName="INSTANCE"/>
+        <fileEditorProvider implementation="dev.wiremark.intellij.editor.WiremarkSplitEditorProvider"/>
     </extensions>
 </idea-plugin>

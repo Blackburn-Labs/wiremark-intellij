@@ -1,0 +1,27 @@
+// demo.wiremark -- a single-frame wiremark wireframe.
+//
+// Open this file in the IDE and the Wiremark plugin shows a live, hand-drawn
+// SVG preview beside the source. Edit a line and the preview updates.
+//
+// wiremark reads top-to-bottom; indentation (spaces only) shows containment,
+// the way YAML nesting does. Quoted text is a label; bare words are options.
+
+Wireframe #phone preset=mobile
+  AppBar
+    Toolbar
+      Icon menu
+      Typography h6 "Wiremark"
+      Spacer
+      Icon search
+      Icon more-vert
+  Stack column gap=2
+    Typography h4 "Welcome back"
+    Typography body2 "Sign in to keep sketching."
+    TextField "Email" placeholder="you@example.com"
+    TextField "Password" type=password
+    Button "Sign in" contained large fullWidth
+    Divider
+    Stack row gap=1
+      Button "Create account" outlined
+      Spacer
+      Button "Forgot password" text

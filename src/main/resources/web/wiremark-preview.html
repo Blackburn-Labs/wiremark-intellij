@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<!--
+  Split-editor preview shell for *.wiremark files (dev2).
+  The Kotlin side (WiremarkPreviewHtml) inlines the wiremark core bundle and
+  wiremark-preview.js into this document before handing it to JBCefBrowser.loadHTML,
+  so the two placeholder comments below are replaced at load time. Loading it
+  directly in a normal browser (without that inlining) renders an empty shell.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;">
+  <style id="wiremark-base-style">
+    :root { color-scheme: light dark; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #wiremark-root {
+      box-sizing: border-box;
+      min-height: 100%;
+      padding: 12px;
+    }
+    #wiremark-host { display: block; }
+    #wiremark-host svg { max-width: 100%; height: auto; }
+    /* Diagnostics / error containers. dev4 owns the polished styling; these are
+       structural placeholders so the markup and ids are stable. */
+    #wiremark-error {
+      display: none;
+      margin: 0 0 10px 0;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      background: rgba(190, 50, 50, 0.12);
+      color: #b23535;
+      border: 1px solid rgba(190, 50, 50, 0.4);
+    }
+    #wiremark-error.visible { display: block; }
+    #wiremark-diagnostics { margin-top: 10px; }
+    #wiremark-placeholder {
+      opacity: 0.55;
+      font-size: 12px;
+      padding: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="wiremark-root">
+    <div id="wiremark-error" role="alert"></div>
+    <div id="wiremark-host"></div>
+    <div id="wiremark-diagnostics"></div>
+    <div id="wiremark-placeholder">Wiremark preview &mdash; start typing to render.</div>
+  </div>
+  <!-- WIREMARK_BUNDLE -->
+  <!-- WIREMARK_PREVIEW_JS -->
+</body>
+</html>

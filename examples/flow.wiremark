@@ -1,0 +1,39 @@
+// flow.wiremark -- a multi-frame wiremark file.
+//
+// Several `Wireframe` blocks in one file render as a flow chart: each frame is
+// a screen, and a `to=#id` link (on a Button, ListItem, or any element) draws a
+// connector to the frame with that `#id`. The first frame's `direction=` sets
+// the chart layout (LR = left-to-right; the default is TD = top-down).
+//
+// This is a tiny three-screen checkout flow: catalog -> cart -> confirmation.
+
+Wireframe #catalog direction=LR
+  AppBar
+    Toolbar
+      Typography h6 "Shop"
+      Spacer
+      Icon shopping-cart to=#cart
+  List subheader="Featured"
+    ListItem "Sketchbook -- $12" to=#cart
+    ListItem "Fineliner set -- $9" to=#cart
+    ListItem "Grid notepad -- $6" to=#cart
+
+Wireframe #cart
+  AppBar
+    Toolbar
+      Icon arrow-back to=#catalog
+      Typography h6 "Your cart"
+  Stack column gap=2
+    Card
+      CardContent
+        Typography subtitle1 "Sketchbook"
+        Typography body2 "Qty 1 -- $12.00"
+    Typography h6 "Total: $12.00"
+    Button "Checkout" contained fullWidth to=#done
+
+Wireframe #done preset=mobile
+  Stack column gap=2
+    Icon check-circle size=large
+    Typography h5 "Order placed"
+    Typography body2 "We emailed your receipt."
+    Button "Back to shop" outlined to=#catalog

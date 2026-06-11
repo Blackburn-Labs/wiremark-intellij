@@ -1,0 +1,70 @@
+package dev.wiremark.intellij.editor
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Pure unit tests for the JS payload escaping. No platform fixtures needed.
+ */
+class WiremarkPreviewPayloadTest {
+
+    @Test
+    fun `simple source round-trips as a quoted literal`() {
+        assertEquals("\"Button login\"", WiremarkPreviewPayload.toJsStringLiteral("Button login"))
+    }
+
+    @Test
+    fun `double quotes are escaped`() {
+        assertEquals("\"a \\\"b\\\" c\"", WiremarkPreviewPayload.toJsStringLiteral("a \"b\" c"))
+    }
+
+    @Test
+    fun `backslashes are escaped`() {
+        // input: one backslash -> output literal contains two backslashes
+        assertEquals("\"a\\\\b\"", WiremarkPreviewPayload.toJsStringLiteral("a\\b"))
+    }
+
+    @Test
+    fun `newlines and tabs are escaped, not literal`() {
+        val literal = WiremarkPreviewPayload.toJsStringLiteral("line1\nline2\twrapped")
+        assertTrue("expected \\n escape", literal.contains("\\n"))
+        assertTrue("expected \\t escape", literal.contains("\\t"))
+        assertFalse("must not contain a raw newline", literal.contains("\n"))
+        assertFalse("must not contain a raw tab", literal.contains("\t"))
+    }
+
+    @Test
+    fun `unicode line and paragraph separators are escaped`() {
+        val ls = '\u2028'.toString()
+        val ps = '\u2029'.toString()
+        val literal = WiremarkPreviewPayload.toJsStringLiteral("a${ls}b${ps}c")
+        assertTrue("expected \\u2028", literal.contains("\\u2028"))
+        assertTrue("expected \\u2029", literal.contains("\\u2029"))
+        assertFalse("raw U+2028 must not survive", literal.contains(ls))
+        assertFalse("raw U+2029 must not survive", literal.contains(ps))
+    }
+
+    @Test
+    fun `script-closing sequence is harmless inside executeJavaScript payload`() {
+        // executeJavaScript runs JS source (not HTML), but the literal must still
+        // be a single valid string literal with the slash preserved.
+        val literal = WiremarkPreviewPayload.toJsStringLiteral("</script>")
+        assertEquals("\"</script>\"", literal)
+    }
+
+    @Test
+    fun `renderCall wraps the literal in the entry-point invocation`() {
+        assertEquals(
+            "window.renderWiremark(\"Frame\");",
+            WiremarkPreviewPayload.renderCall("Frame"),
+        )
+    }
+
+    @Test
+    fun `empty source produces an empty literal`() {
+        assertEquals("\"\"", WiremarkPreviewPayload.toJsStringLiteral(""))
+        assertEquals("window.renderWiremark(\"\");", WiremarkPreviewPayload.renderCall(""))
+    }
+}

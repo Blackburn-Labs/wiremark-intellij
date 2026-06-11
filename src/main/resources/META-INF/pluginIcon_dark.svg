@@ -1,0 +1,16 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Wiremark: a hand-drawn wireframe frame. Dark theme (light ink on transparent). -->
+  <g stroke="#CED0D6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Frame: a slightly wobbly rounded rectangle (a wireframe screen). -->
+    <path d="M8.5 6.2 C 18 5.4, 28 5.6, 31.6 6.4 C 34.4 7, 34.2 14, 34.3 20 C 34.4 27, 34.6 33, 31.4 33.7 C 22 34.6, 12 34.4, 8.4 33.6 C 5.6 33, 5.8 26, 5.7 20 C 5.6 13, 5.4 7, 8.5 6.2 Z"/>
+    <!-- Title bar rule under the top of the frame. -->
+    <path d="M6.4 12.6 C 16 12.2, 26 12.4, 33.6 12.5"/>
+  </g>
+  <g stroke="#CED0D6" stroke-width="2.2" stroke-linecap="round" fill="none">
+    <!-- Sketch content: two text lines and a button block. -->
+    <path d="M10.5 18.5 C 16 18.2, 22 18.4, 29.5 18.4"/>
+    <path d="M10.5 23 C 14.5 22.8, 19 23, 24 23"/>
+  </g>
+  <!-- A button: a small filled-look rounded box, hatched feel via a bold outline. -->
+  <rect x="10" y="27" width="13" height="5.4" rx="1.6" stroke="#CED0D6" stroke-width="2" fill="none"/>
+</svg>

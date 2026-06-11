@@ -1,5 +1,9 @@
 <!-- Loaded only when the bundled Markdown plugin (org.intellij.plugins.markdown) is enabled. -->
 <idea-plugin>
     <extensions defaultExtensionNs="org.intellij.markdown">
+        <!-- dev3 (Part A): inject the wiremark bundle + glue into the Markdown preview so
+             ```wireframe / ```wiremark fences render as SVGs. -->
+        <browserPreviewExtensionProvider
+            implementation="dev.wiremark.intellij.markdown.WiremarkPreviewExtension$Provider"/>
     </extensions>
 </idea-plugin>
