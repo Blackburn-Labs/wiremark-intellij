@@ -30,6 +30,17 @@ import org.intellij.plugins.markdown.ui.preview.ResourceProvider
  * Resource names are classpath-absolute (leading `/web/...`) so
  * [ResourceProvider.loadInternalResource] -> `Class.getResourceAsStream` resolves
  * them from the classpath root rather than relative to this class's package.
+ *
+ * Icons-block `src=` entries are NOT bridged on this surface (task #6 implements
+ * the bridge only for the *.wiremark split editor). This EP injects static
+ * scripts and serves static resources; it has no per-document hook that knows the
+ * source .md file's path, which is required to pre-read `src=` icons relative to
+ * the document (the way the split editor's WiremarkPreviewFileEditor does it).
+ * The glue therefore calls `wiremark.render(source)` with no `loadIcon`, so any
+ * `src=` icon degrades to core's placeholder glyph + a soft diagnostic -- the
+ * same graceful fallback core gives when no host loader is supplied. Bridging
+ * here would need a different injection mechanism and is deferred (see PLAN.md
+ * "Icons with src=").
  */
 internal class WiremarkPreviewExtension(
     // The panel is unused: this extension only injects static scripts and serves

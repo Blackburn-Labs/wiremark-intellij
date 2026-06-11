@@ -22,7 +22,7 @@ class WiremarkPreviewFileEditorProvider : FileEditorProvider, DumbAware {
         file.fileType == WiremarkFileType
 
     override fun createEditor(project: Project, file: VirtualFile): FileEditor =
-        WiremarkPreviewFileEditor(file)
+        WiremarkPreviewFileEditor(project, file)
 
     override fun getEditorTypeId(): String = "wiremark-preview-editor"
 

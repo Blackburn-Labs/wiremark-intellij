@@ -30,9 +30,32 @@ object WiremarkPreviewPayload {
     }
 
     /**
-     * The full JS statement to evaluate in the preview document for [source].
-     * Calls the shell's `window.renderWiremark(src)` entry point.
+     * The full JS statement to evaluate in the preview document for [source],
+     * with no injected `src=` icons. Calls the shell's single-argument
+     * `window.renderWiremark(src)` form (the preview treats a missing icon map as
+     * "no src= icons", degrading any to core's placeholder). Kept byte-identical
+     * to the original contract so callers/tests that don't deal in icons are
+     * unchanged.
      */
     fun renderCall(source: String): String =
         "window.renderWiremark(" + toJsStringLiteral(source) + ");"
+
+    /**
+     * The full JS statement to evaluate in the preview document for [source],
+     * shipping [iconsJson] as the second argument to the shell's
+     * `window.renderWiremark(src, icons)` entry point (task #6 icon bridge).
+     *
+     * [iconsJson] is an already-encoded JSON object literal (raw-`src` ->
+     * `{ body, viewBox }`, from [dev.wiremark.intellij.icons.IconPayload]),
+     * spliced in verbatim: it is machine-generated JSON, never user text that
+     * needs string-literal escaping. The preview turns it into a synchronous
+     * `loadIcon` map lookup; a `src` missing from it degrades to core's
+     * placeholder. A blank value falls back to the single-argument form so the
+     * emitted JS call is always well-formed.
+     */
+    fun renderCall(source: String, iconsJson: String): String {
+        val icons = iconsJson.ifBlank { "{}" }
+        if (icons == "{}") return renderCall(source)
+        return "window.renderWiremark(" + toJsStringLiteral(source) + ", " + icons + ");"
+    }
 }

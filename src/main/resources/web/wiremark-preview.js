@@ -77,8 +77,27 @@
     host.innerHTML = UI.diagnosticsHtml ? UI.diagnosticsHtml(diagnostics) : "";
   }
 
-  // window.renderWiremark(src): called from Kotlin via executeJavaScript.
-  window.renderWiremark = function (src) {
+  // Build the synchronous loadIcon callback core needs for `Icons` src= entries
+  // (task #6 icon bridge). The Kotlin side pre-reads each referenced file,
+  // sanitizes it, and ships an { rawSrc: { body, viewBox } } map; here loadIcon
+  // is a pure lookup keyed by the exact src= string core passes back. A miss
+  // returns null, which core degrades to its placeholder + a soft diagnostic.
+  // The map is plain pre-read data (no DOM, no closures over the document), so a
+  // bad/empty value just yields an always-missing lookup -- never an exception.
+  function makeLoadIcon(icons) {
+    var map = icons && typeof icons === "object" ? icons : {};
+    return function loadIcon(src) {
+      var hit = Object.prototype.hasOwnProperty.call(map, src) ? map[src] : null;
+      // Only hand core a well-formed { body, viewBox }; anything else is a miss.
+      if (hit && typeof hit.body === "string" && hit.body) return hit;
+      return null;
+    };
+  }
+
+  // window.renderWiremark(src, icons): called from Kotlin via executeJavaScript.
+  // `icons` is the pre-read src= map (optional; absent on surfaces/paths that
+  // don't supply one, in which case src= icons degrade to placeholders).
+  window.renderWiremark = function (src, icons) {
     hidePlaceholder();
 
     if (typeof window.wiremark === "undefined" || typeof window.wiremark.render !== "function") {
@@ -88,7 +107,7 @@
 
     var result;
     try {
-      result = window.wiremark.render(src);
+      result = window.wiremark.render(src, { loadIcon: makeLoadIcon(icons) });
     } catch (e) {
       // Hard parse failure: keep the last good SVG, surface the message.
       // NOTE (dev1 contract): a thrown WiremarkError is NOT a standard Error --

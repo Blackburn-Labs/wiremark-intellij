@@ -7,12 +7,14 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.fileEditor.FileEditorStateLevel
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.Alarm
+import dev.wiremark.intellij.icons.IconBridge
 import java.awt.BorderLayout
 import java.beans.PropertyChangeListener
 import javax.swing.JComponent
@@ -28,6 +30,7 @@ import javax.swing.SwingConstants
  * to a static message; the text editor side still works via the split editor.
  */
 class WiremarkPreviewFileEditor(
+    private val project: Project,
     private val file: VirtualFile,
 ) : UserDataHolderBase(), FileEditor {
 
@@ -70,9 +73,13 @@ class WiremarkPreviewFileEditor(
     private fun pushSource(b: JBCefBrowser) {
         if (b.isDisposed) return
         val text = document?.immutableCharSequence?.toString() ?: return
+        // Re-scan the Icons block and pre-read any src= files on every push, so an
+        // edit to the source -- or to a referenced icon file -- is reflected next
+        // render. Best-effort: failures yield an empty map (core draws placeholders).
+        val iconsJson = IconBridge.buildIconJson(project, file, text)
         // The preview document defines window.renderWiremark; it may not have
         // executed yet right after loadHTML, so retry until it exists.
-        val js = WIRE_READY_GUARD_PREFIX + WiremarkPreviewPayload.renderCall(text) + WIRE_READY_GUARD_SUFFIX
+        val js = WIRE_READY_GUARD_PREFIX + WiremarkPreviewPayload.renderCall(text, iconsJson) + WIRE_READY_GUARD_SUFFIX
         // CefBrowser#getURL() may be null before the first load completes.
         b.cefBrowser.executeJavaScript(js, b.cefBrowser.getURL() ?: "", 0)
     }

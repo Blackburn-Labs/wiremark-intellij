@@ -209,3 +209,32 @@ val testWiremarkPreview by tasks.registering(Exec::class) {
 tasks.named("check") {
     dependsOn(testWiremarkPreview)
 }
+
+// ---------------------------------------------------------------------------
+// dev6 (task #6): DOM-less tests for the icon src= bridge in the preview entry.
+//
+// Same pure `node:test` + vm-sandbox approach -- exercises the loadIcon the
+// preview hands to wiremark.render(): it is passed, resolves a known src= to the
+// pre-read { body, viewBox }, and returns null for an unknown/malformed/missing
+// entry (so core degrades to its placeholder). Wired into `check`.
+// ---------------------------------------------------------------------------
+val previewIconsTestFile = layout.projectDirectory.file("src/test/js/wiremark-preview-icons.test.mjs")
+val previewIconsTestMarker = layout.buildDirectory.file("generated/wiremarkPreviewIconsTest/.preview-icons-test-passed")
+
+val testWiremarkPreviewIcons by tasks.registering(Exec::class) {
+    description = "Test the icon src= bridge in the preview entry script (node --test)."
+    workingDir = layout.projectDirectory.asFile
+    commandLine("node", "--test", previewIconsTestFile.asFile.absolutePath)
+
+    inputs.file(previewIconsTestFile)
+    inputs.file(previewSourceFile)
+    inputs.file(uiSourceFile)
+    val marker = previewIconsTestMarker
+    outputs.file(marker)
+    doLast {
+        marker.get().asFile.writeText("ok\n")
+    }
+}
+tasks.named("check") {
+    dependsOn(testWiremarkPreviewIcons)
+}

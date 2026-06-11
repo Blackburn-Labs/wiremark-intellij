@@ -67,4 +67,34 @@ class WiremarkPreviewPayloadTest {
         assertEquals("\"\"", WiremarkPreviewPayload.toJsStringLiteral(""))
         assertEquals("window.renderWiremark(\"\");", WiremarkPreviewPayload.renderCall(""))
     }
+
+    // --- 2-arg form: the task #6 icon bridge (added by dev6) -----------------
+
+    @Test
+    fun `renderCall with an icon map splices the JSON as a second argument`() {
+        val icons = "{\"./logo.svg\":{\"body\":\"<path/>\",\"viewBox\":24}}"
+        assertEquals(
+            "window.renderWiremark(\"Frame\", $icons);",
+            WiremarkPreviewPayload.renderCall("Frame", icons),
+        )
+    }
+
+    @Test
+    fun `renderCall with an empty icon object falls back to the single-arg form`() {
+        // The common no-src=-icons case must emit the original clean call.
+        assertEquals("window.renderWiremark(\"Frame\");", WiremarkPreviewPayload.renderCall("Frame", "{}"))
+    }
+
+    @Test
+    fun `renderCall with a blank icon string falls back to the single-arg form`() {
+        assertEquals("window.renderWiremark(\"Frame\");", WiremarkPreviewPayload.renderCall("Frame", ""))
+    }
+
+    @Test
+    fun `renderCall still escapes the source literal when icons are present`() {
+        val icons = "{\"a.svg\":{\"body\":\"<path/>\",\"viewBox\":24}}"
+        val call = WiremarkPreviewPayload.renderCall("a \"b\" c", icons)
+        assertTrue("source must be escaped", call.startsWith("window.renderWiremark(\"a \\\"b\\\" c\", "))
+        assertTrue("icons spliced verbatim", call.endsWith(", $icons);"))
+    }
 }
