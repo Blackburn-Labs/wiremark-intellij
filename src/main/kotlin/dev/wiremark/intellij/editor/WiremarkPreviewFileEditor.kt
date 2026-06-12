@@ -13,10 +13,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.ui.JBColor
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.Alarm
-import com.intellij.util.ui.StartupUiUtil
 import dev.wiremark.intellij.icons.IconBridge
 import java.awt.BorderLayout
 import java.beans.PropertyChangeListener
@@ -86,8 +86,11 @@ class WiremarkPreviewFileEditor(
         // render. Best-effort: failures yield an empty map (core draws placeholders).
         val iconsJson = IconBridge.buildIconJson(project, file, text)
         // Read the IDE theme per push (never cached) so the render scheduled by
-        // the LafManagerListener above sees the new Look-and-Feel.
-        val theme = if (StartupUiUtil.isDarkTheme) "dark" else "light"
+        // the LafManagerListener above sees the new Look-and-Feel. JBColor.isBright()
+        // is the public (non-@Internal) inverse of StartupUiUtil.isDarkTheme; the
+        // platform keeps it in sync with the LAF on theme change. Do NOT switch back
+        // to StartupUiUtil.isDarkTheme -- it is @ApiStatus.Internal and fails verifyPlugin.
+        val theme = if (JBColor.isBright()) "light" else "dark"
         // The preview document defines window.renderWiremark; it may not have
         // executed yet right after loadHTML, so retry until it exists.
         val js = WIRE_READY_GUARD_PREFIX + WiremarkPreviewPayload.renderCall(text, iconsJson, theme) + WIRE_READY_GUARD_SUFFIX
