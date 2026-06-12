@@ -97,4 +97,51 @@ class WiremarkPreviewPayloadTest {
         assertTrue("source must be escaped", call.startsWith("window.renderWiremark(\"a \\\"b\\\" c\", "))
         assertTrue("icons spliced verbatim", call.endsWith(", $icons);"))
     }
+
+    // --- 3-arg form: the IDE theme bridge ------------------------------------
+
+    @Test
+    fun `renderCall with a theme splices it as a trailing literal after the icons`() {
+        val icons = "{\"a.svg\":{\"body\":\"<path/>\",\"viewBox\":24}}"
+        assertEquals(
+            "window.renderWiremark(\"Frame\", $icons, \"dark\");",
+            WiremarkPreviewPayload.renderCall("Frame", icons, "dark"),
+        )
+    }
+
+    @Test
+    fun `renderCall with a theme keeps an explicit empty icon map`() {
+        // Unlike the 2-arg form, blank icons must NOT collapse to the 1-arg call:
+        // the theme argument is positional and would be silently dropped in the
+        // common no-icons case.
+        assertEquals(
+            "window.renderWiremark(\"Frame\", {}, \"dark\");",
+            WiremarkPreviewPayload.renderCall("Frame", "", "dark"),
+        )
+        assertEquals(
+            "window.renderWiremark(\"Frame\", {}, \"dark\");",
+            WiremarkPreviewPayload.renderCall("Frame", "{}", "dark"),
+        )
+    }
+
+    @Test
+    fun `renderCall normalizes any non-dark theme to a light literal`() {
+        assertEquals(
+            "window.renderWiremark(\"Frame\", {}, \"light\");",
+            WiremarkPreviewPayload.renderCall("Frame", "{}", "light"),
+        )
+        // Never splice a non-constant theme: anything but exactly "dark" is light.
+        assertEquals(
+            "window.renderWiremark(\"Frame\", {}, \"light\");",
+            WiremarkPreviewPayload.renderCall("Frame", "{}", "Dark\"); alert(1); (\""),
+        )
+    }
+
+    @Test
+    fun `renderCall still escapes the source literal when a theme is present`() {
+        assertEquals(
+            "window.renderWiremark(\"a \\\"b\\\" c\", {}, \"dark\");",
+            WiremarkPreviewPayload.renderCall("a \"b\" c", "", "dark"),
+        )
+    }
 }

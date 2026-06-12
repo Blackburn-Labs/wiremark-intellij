@@ -227,12 +227,13 @@ function addFence(doc, lang, source, dataLine) {
   return { pre, code };
 }
 
-function runGlue(doc, wiremark) {
+function runGlue(doc, wiremark, opts) {
   const sandbox = {
     document: doc,
     window: {
       wiremark,
       requestAnimationFrame: (fn) => fn(), // run scheduled work synchronously
+      addEventListener: () => {},
     },
     MutationObserver: class {
       observe() {}
@@ -240,6 +241,16 @@ function runGlue(doc, wiremark) {
     },
     setTimeout: (fn) => fn(),
   };
+  // Theme detection reads window.getComputedStyle(body).backgroundColor. Tests
+  // that exercise it pass opts.background; it is read back at call time so a
+  // test can mutate opts.background between passes to simulate a theme flip.
+  // Without opts the sandbox has no getComputedStyle, matching the glue's
+  // documented default-to-light path.
+  if (opts && "background" in opts) {
+    sandbox.window.getComputedStyle = (el) => ({
+      backgroundColor: el === doc.body ? opts.background : "rgba(0, 0, 0, 0)",
+    });
+  }
   vm.createContext(sandbox);
   // Shared helper first (defines window.WiremarkUI), then the glue -- matching
   // the browser load order (wiremark-ui.js is listed before wiremark-glue.js).
@@ -498,6 +509,111 @@ test("carries data-line from the source <pre> to the host for scroll sync", () =
   const { pre } = addFence(doc, "wireframe", "Frame", 42);
   runGlue(doc, { render: () => ({ svg: "<svg/>", diagnostics: [] }) });
   assert.equal(hostAfter(pre).getAttribute("data-line"), "42");
+});
+
+// --- Theme detection (page background -> { theme } render option) ----------
+
+test("a dark page background renders with theme:'dark' and tags the host", () => {
+  const doc = makeDocument();
+  const { pre } = addFence(doc, "wireframe", "Frame");
+  let options;
+  runGlue(
+    doc,
+    {
+      render: (src, opts) => {
+        options = opts;
+        return { svg: "<svg/>", diagnostics: [] };
+      },
+    },
+    { background: "rgb(30, 31, 34)" }, // Darcula-ish editor background
+  );
+  assert.equal(options.theme, "dark");
+  assert.ok(hostAfter(pre).classList.contains("wiremark-dark"));
+});
+
+test("a light page background renders with theme:'light' and no dark tag", () => {
+  const doc = makeDocument();
+  const { pre } = addFence(doc, "wireframe", "Frame");
+  let options;
+  runGlue(
+    doc,
+    {
+      render: (src, opts) => {
+        options = opts;
+        return { svg: "<svg/>", diagnostics: [] };
+      },
+    },
+    { background: "rgb(255, 255, 255)" },
+  );
+  assert.equal(options.theme, "light");
+  assert.ok(!hostAfter(pre).classList.contains("wiremark-dark"));
+});
+
+test("a fully transparent background defaults to light", () => {
+  // alpha 0 is skipped; with nothing opaque up the chain detection falls back
+  // to light (core's own unknown-theme behavior).
+  const doc = makeDocument();
+  const { pre } = addFence(doc, "wireframe", "Frame");
+  let options;
+  runGlue(
+    doc,
+    {
+      render: (src, opts) => {
+        options = opts;
+        return { svg: "<svg/>", diagnostics: [] };
+      },
+    },
+    { background: "rgba(0, 0, 0, 0)" },
+  );
+  assert.equal(options.theme, "light");
+  assert.ok(!hostAfter(pre).classList.contains("wiremark-dark"));
+});
+
+test("no getComputedStyle at all defaults to light", () => {
+  const doc = makeDocument();
+  addFence(doc, "wireframe", "Frame");
+  let options;
+  runGlue(doc, {
+    render: (src, opts) => {
+      options = opts;
+      return { svg: "<svg/>", diagnostics: [] };
+    },
+  });
+  assert.equal(options.theme, "light");
+});
+
+test("a theme flip re-renders an unchanged fence (theme is part of the render key)", () => {
+  const doc = makeDocument();
+  const { pre } = addFence(doc, "wireframe", "Frame");
+  let calls = 0;
+  const opts = { background: "rgb(255, 255, 255)" };
+  const sandbox = runGlue(
+    doc,
+    {
+      render: () => {
+        calls++;
+        return { svg: "<svg/>", diagnostics: [] };
+      },
+    },
+    opts,
+  );
+  assert.equal(calls, 1, "first pass renders once");
+
+  // Same theme, same content: another tick is a no-op.
+  vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
+  assert.equal(calls, 1, "unchanged fence + unchanged theme does not re-render");
+
+  // Flip to dark: the theme-in-key invalidates the fence and re-renders.
+  opts.background = "rgb(30, 31, 34)";
+  vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
+  assert.equal(calls, 2, "theme flip re-renders");
+  assert.ok(hostAfter(pre).classList.contains("wiremark-dark"));
+
+  // And back to light: re-renders again and the dark tag comes off.
+  opts.background = "rgb(255, 255, 255)";
+  vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
+  assert.equal(calls, 3);
+  assert.ok(!hostAfter(pre).classList.contains("wiremark-dark"));
 });
 
 test("does not inject any <style> (styling moved to the shared wiremark-ui.css)", () => {

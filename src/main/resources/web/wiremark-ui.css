@@ -11,23 +11,24 @@
  *     contents into the shell's <style> at load time (JBCefBrowser.loadHTML
  *     serves from an opaque origin, so a <link> could not resolve there).
  *
- * Theme: the markdown preview exposes IDE theme CSS variables and the split
- * preview sets `color-scheme: light dark`, but the specific variable names
- * differ across IDE versions and between the two surfaces. Rather than depend on
- * any one being present, the rules below use theme-agnostic colors that read on
- * either a light or a dark host: translucent gray overlays for the diagnostics
- * surround (so they pick up the panel behind them) and fixed mid-tone amber/red
- * for severity (legible on both backgrounds). The host card is deliberately
- * paper-white (see the SVG note below), not theme-derived.
+ * Theme: both surfaces render core with an explicit { theme: 'light'|'dark' }
+ * (core >= 0.0.6 ships a full dark palette) and tag the rendered host with
+ * .wiremark-dark so the paper card below matches core's paper color. The split
+ * preview gets the theme from Kotlin (StartupUiUtil.isDarkTheme, re-pushed on
+ * every LAF change); the markdown preview detects it in-page from the effective
+ * body background, which follows the editor color scheme (see detectTheme in
+ * wiremark-glue.js). The diagnostics/error rules below stay theme-agnostic --
+ * translucent gray overlays for the diagnostics surround (so they pick up the
+ * panel behind them) and fixed mid-tone amber/red for severity (legible on both
+ * backgrounds) -- so only the host card needs a dark variant.
  *
- * DARK-THEME TREATMENT OF THE SVG (PLAN open question, decided here):
- * the wiremark core SVG is self-contained -- it paints its own white paper
- * background (#ffffff) and dark ink strokes (#22303f), and does NOT use
- * currentColor for its strokes. So we deliberately do NOT invert or recolor it.
- * Instead the host is a white/paper-colored card with a soft border, so the
- * white SVG sits on matching paper in every theme (the same way Mermaid
- * diagrams stay light-on-white in a dark IDE). Inverting would wreck the
- * hand-drawn look and mis-handle the palette's accent/fill colors.
+ * WHY THE SVG IS THEMED IN CORE, NOT IN CSS: the wiremark SVG is self-contained
+ * -- it paints its own paper background and ink strokes and does NOT use
+ * currentColor -- so a CSS filter: invert() would wreck the hand-drawn look,
+ * raster Img/icon content, and the palette's accent/fill colors. Core swaps the
+ * whole palette per render call instead; the embedder just passes `theme` and
+ * mirrors it on the card. (This supersedes the earlier always-light "paper
+ * card" decision, which predated core's theme option.)
  */
 
 /* --- Load-bearing base rules (migrated from wiremark-glue.js per dev3's
@@ -41,8 +42,9 @@ pre.wiremark-source-hidden {
 
 /* --- Rendered host card --------------------------------------------------- */
 
-/* The card the SVG (or an error banner) lives in. Paper-colored so the
-   self-contained white SVG always sits on matching paper, light or dark. */
+/* The card the SVG (or an error banner) lives in. Paper-colored to match the
+   self-contained SVG: white for core's light palette (default), with a
+   .wiremark-dark variant below matching core's dark paper. */
 .wiremark-host {
   display: block;
   margin: 4px 0;
@@ -52,6 +54,16 @@ pre.wiremark-source-hidden {
   border: 1px solid rgba(0, 0, 0, 0.12);
   /* A faint lift so the white card reads as intentional against a dark panel. */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+/* Dark variant: the JS adds .wiremark-dark when core rendered with
+   { theme: 'dark' }, so the card matches core's dark paper (#1e2127). Keep this
+   rule ABOVE the .wiremark-host.wiremark-error override so the error banner's
+   background still wins when both classes are present. */
+.wiremark-host.wiremark-dark {
+  background: #1e2127;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .wiremark-host svg {

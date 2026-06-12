@@ -1,5 +1,7 @@
 package dev.wiremark.intellij.editor
 
+import com.intellij.ide.ui.LafManagerListener
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
@@ -14,6 +16,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.Alarm
+import com.intellij.util.ui.StartupUiUtil
 import dev.wiremark.intellij.icons.IconBridge
 import java.awt.BorderLayout
 import java.beans.PropertyChangeListener
@@ -55,6 +58,11 @@ class WiremarkPreviewFileEditor(
                 },
                 this,
             )
+            // Core swaps its SVG palette per render call ({ theme } option), so a
+            // Look-and-Feel switch only needs a re-push. App-level topic; the
+            // connection dies with this editor via Disposer.
+            ApplicationManager.getApplication().messageBus.connect(this)
+                .subscribe(LafManagerListener.TOPIC, LafManagerListener { scheduleRender() })
             // Initial render once the document text is available.
             scheduleRender(initial = true)
         } else {
@@ -77,9 +85,12 @@ class WiremarkPreviewFileEditor(
         // edit to the source -- or to a referenced icon file -- is reflected next
         // render. Best-effort: failures yield an empty map (core draws placeholders).
         val iconsJson = IconBridge.buildIconJson(project, file, text)
+        // Read the IDE theme per push (never cached) so the render scheduled by
+        // the LafManagerListener above sees the new Look-and-Feel.
+        val theme = if (StartupUiUtil.isDarkTheme) "dark" else "light"
         // The preview document defines window.renderWiremark; it may not have
         // executed yet right after loadHTML, so retry until it exists.
-        val js = WIRE_READY_GUARD_PREFIX + WiremarkPreviewPayload.renderCall(text, iconsJson) + WIRE_READY_GUARD_SUFFIX
+        val js = WIRE_READY_GUARD_PREFIX + WiremarkPreviewPayload.renderCall(text, iconsJson, theme) + WIRE_READY_GUARD_SUFFIX
         // CefBrowser#getURL() may be null before the first load completes.
         b.cefBrowser.executeJavaScript(js, b.cefBrowser.getURL() ?: "", 0)
     }

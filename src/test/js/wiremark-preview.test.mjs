@@ -205,3 +205,48 @@ test("renderWiremark guards a missing/broken bundle without throwing", () => {
   window.renderWiremark("anything");
   assert.equal(document.getElementById("wiremark-error").classList.contains("visible"), true);
 });
+
+// --- Theme bridge (3rd argument, from Kotlin's StartupUiUtil read) ---------
+
+// A stub that captures the options render() was called with.
+function loadCapturing() {
+  let captured = {};
+  const loaded = loadPreview({
+    render: (input, options) => {
+      captured.options = options;
+      return { svg: "<svg></svg>", diagnostics: [] };
+    },
+  });
+  return { ...loaded, captured };
+}
+
+test("theme 'dark' is passed to render and tags the host card", () => {
+  const { window, document, captured } = loadCapturing();
+  window.renderWiremark("Frame", undefined, "dark");
+  assert.equal(captured.options.theme, "dark");
+  assert.equal(
+    document.getElementById("wiremark-host").classList.contains("wiremark-dark"),
+    true,
+  );
+});
+
+test("a missing theme (legacy 1/2-arg calls) renders light and clears the dark tag", () => {
+  const { window, document, captured } = loadCapturing();
+  const host = document.getElementById("wiremark-host");
+  window.renderWiremark("Frame", undefined, "dark");
+  assert.equal(host.classList.contains("wiremark-dark"), true);
+  // Legacy 1-arg call: no theme -> light, and the dark tag comes off.
+  window.renderWiremark("Frame");
+  assert.equal(captured.options.theme, "light");
+  assert.equal(host.classList.contains("wiremark-dark"), false);
+});
+
+test("an unknown theme value renders light (matches core's fallback)", () => {
+  const { window, document, captured } = loadCapturing();
+  window.renderWiremark("Frame", undefined, "DARK");
+  assert.equal(captured.options.theme, "light");
+  assert.equal(
+    document.getElementById("wiremark-host").classList.contains("wiremark-dark"),
+    false,
+  );
+});

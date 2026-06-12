@@ -17,8 +17,10 @@
 //      our host, the next observer tick re-creates it -- self-healing.
 //
 // The core bundle (loaded just before this script) exposes a synchronous global
-// `wiremark.render(src) -> { svg, diagnostics }`, throwing WiremarkError on a hard
-// parse error. We accept both `wireframe` (canonical) and `wiremark` fence infos.
+// `wiremark.render(src, { theme }) -> { svg, diagnostics }`, throwing WiremarkError
+// on a hard parse error. We accept both `wireframe` (canonical) and `wiremark`
+// fence infos, and pass the theme detected from the page background (see
+// detectTheme) so the SVG palette follows the IDE.
 
 (function () {
   "use strict";
@@ -49,11 +51,12 @@
 
   // Marker attributes / classes (kept stable; dev4's diagnostics UI keys off the
   // host structure below).
-  var HASH_ATTR = "data-wiremark-hash"; // last-rendered content hash, on the <code>
+  var HASH_ATTR = "data-wiremark-hash"; // last-rendered content hash + theme, on the <code>
   var PAIR_ATTR = "data-wiremark-id"; // stable id linking a <code> to its host
   var HOST_CLASS = "wiremark-host"; // our rendered container, sibling of the <pre>
   var SOURCE_HIDDEN_CLASS = "wiremark-source-hidden"; // hides the original <pre>
   var ERROR_CLASS = "wiremark-error"; // hard-error banner (source stays visible)
+  var DARK_CLASS = "wiremark-dark"; // on the host when core rendered the dark palette
   // The soft-diagnostics footer markup (class "wiremark-diagnostics") is built by
   // the shared formatter in wiremark-ui.js; this file no longer names that class.
 
@@ -95,6 +98,42 @@
       h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
     }
     return h.toString(16);
+  }
+
+  // Decide light vs dark from the effective background color behind the fences.
+  // The markdown preview styles <body> from the active EDITOR COLOR SCHEME
+  // (PreviewLAFThemeStyles), so reading it back matches the page the user
+  // actually sees. Deliberately NOT matchMedia('prefers-color-scheme'): inside
+  // JCEF that tracks the OS scheme, not the IDE's, and is wrong when they
+  // differ. Walk up past transparent backgrounds; nothing opaque (or no
+  // getComputedStyle, as in the DOM-less tests) defaults to light, core's own
+  // fallback. A LAF switch rebuilds this whole panel (scripts re-run fresh), so
+  // detection at render time is always current -- no change listener needed.
+  function detectTheme() {
+    if (typeof window.getComputedStyle !== "function") return "light";
+    var el = document.body;
+    while (el) {
+      var bg = "";
+      try {
+        bg = String(window.getComputedStyle(el).backgroundColor || "");
+      } catch (e) {
+        return "light";
+      }
+      var m = /^rgba?\(\s*([^)]+)\)/.exec(bg);
+      if (m) {
+        var parts = m[1].split(",");
+        var alpha = parts.length > 3 ? parseFloat(parts[3]) : 1;
+        var r = parseFloat(parts[0]);
+        var g = parseFloat(parts[1]);
+        var b = parseFloat(parts[2]);
+        if (alpha > 0 && !isNaN(r) && !isNaN(g) && !isNaN(b)) {
+          // Perceived luminance (ITU-R BT.601); below mid-gray reads as dark.
+          return 0.299 * r + 0.587 * g + 0.114 * b < 128 ? "dark" : "light";
+        }
+      }
+      el = el.parentElement;
+    }
+    return "light";
   }
 
   // The <code>'s text is the wireframe source. Browsers may break it across text
@@ -156,19 +195,23 @@
     return matches[0];
   }
 
-  // Render (or re-render) a single fence. Idempotent: safe to call every tick.
-  function renderFence(code) {
+  // Render (or re-render) a single fence under [theme]. Idempotent: safe to
+  // call every tick.
+  function renderFence(code, theme) {
     var pre = preOf(code);
     if (!pre) return;
 
     var source = sourceOf(code);
-    var hash = hashContent(source);
+    // The theme is part of the render key: a fence rendered before the preview
+    // stylesheets applied (or under an old editor scheme) self-corrects on the
+    // next pass instead of staying frozen in the wrong palette.
+    var renderKey = hashContent(source) + "-" + theme;
     var pairId = pairIdOf(code);
     var host = findHost(pairId);
 
-    // Up to date already: the content hash matches what we last rendered AND the
+    // Up to date already: the render key matches what we last rendered AND the
     // host is still present. Nothing to do -- this is the common observer tick.
-    if (host && code.getAttribute(HASH_ATTR) === hash) return;
+    if (host && code.getAttribute(HASH_ATTR) === renderKey) return;
 
     if (!host) {
       host = document.createElement("div");
@@ -187,8 +230,13 @@
 
     copyLineAttributes(pre, host);
 
+    // Mirror core's palette on the paper card (.wiremark-dark in wiremark-ui.css
+    // swaps the white card for core's dark paper).
+    if (theme === "dark") host.classList.add(DARK_CLASS);
+    else host.classList.remove(DARK_CLASS);
+
     try {
-      var result = window.wiremark.render(source);
+      var result = window.wiremark.render(source, { theme: theme });
       var svg = (result && result.svg) || "";
       host.innerHTML = svg + diagnosticsHtml(result && result.diagnostics);
       pre.classList.add(SOURCE_HIDDEN_CLASS); // hide source, keep it in the DOM
@@ -209,13 +257,15 @@
     // Record what we rendered. Stored on the <code> (a node the incremental
     // updater owns and preserves), so a later edit that mutates the text but
     // leaves the element identity intact still re-renders on the next tick.
-    code.setAttribute(HASH_ATTR, hash);
+    code.setAttribute(HASH_ATTR, renderKey);
   }
 
   function renderAll() {
+    // One detection per pass: every fence in a pass renders under one theme.
+    var theme = detectTheme();
     var candidates = document.querySelectorAll(FENCE_SELECTOR);
     for (var i = 0; i < candidates.length; i++) {
-      if (isWireframeFence(candidates[i])) renderFence(candidates[i]);
+      if (isWireframeFence(candidates[i])) renderFence(candidates[i], theme);
     }
   }
 
@@ -245,6 +295,12 @@
     renderAll();
     var observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
+    // The first pass can beat the preview's <link> stylesheets (they set the
+    // body background detectTheme reads). Re-run once everything has loaded;
+    // the theme-in-key makes it a no-op unless detection actually changed.
+    if (document.readyState !== "complete") {
+      window.addEventListener("load", schedule);
+    }
   }
 
   if (document.readyState === "loading") {

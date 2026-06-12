@@ -58,4 +58,25 @@ object WiremarkPreviewPayload {
         if (icons == "{}") return renderCall(source)
         return "window.renderWiremark(" + toJsStringLiteral(source) + ", " + icons + ");"
     }
+
+    /**
+     * The full JS statement for [source] carrying both the [iconsJson] map and
+     * the IDE [theme] as the third argument:
+     * `window.renderWiremark(src, icons, "dark")`.
+     *
+     * Unlike the 2-arg form, blank icons must NOT collapse to the
+     * single-argument call -- that would silently drop the theme in the common
+     * no-icons case -- so an explicit `{}` map is spliced to keep the argument
+     * positions stable.
+     *
+     * [theme] is normalized here to a constant `"dark"` / `"light"` literal (any
+     * other value renders light, matching core's own unknown-theme fallback), so
+     * the spliced JS never carries non-constant text. The platform-aware theme
+     * read lives in the editor; this object stays browser- and platform-free.
+     */
+    fun renderCall(source: String, iconsJson: String, theme: String): String {
+        val icons = iconsJson.ifBlank { "{}" }
+        val themeLiteral = if (theme == "dark") "\"dark\"" else "\"light\""
+        return "window.renderWiremark(" + toJsStringLiteral(source) + ", " + icons + ", " + themeLiteral + ");"
+    }
 }

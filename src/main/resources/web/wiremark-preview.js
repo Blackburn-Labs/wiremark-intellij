@@ -1,9 +1,10 @@
 // Split-editor preview entry point for *.wiremark files (dev2 owns this file).
 //
 // Contract with the wiremark core bundle (dev1): a global `wiremark` object with
-//   wiremark.render(src) -> { svg, diagnostics }   (throws WiremarkError on a
-// hard parse error). The Kotlin side calls window.renderWiremark(src) over JCEF
-// after debouncing document edits.
+//   wiremark.render(src, options) -> { svg, diagnostics }   (throws WiremarkError
+// on a hard parse error; options carries loadIcon and theme). The Kotlin side
+// calls window.renderWiremark(src, icons, theme) over JCEF after debouncing
+// document edits.
 //
 // Error model: a thrown WiremarkError shows a banner over the LAST GOOD SVG
 // (the panel never goes blank mid-edit). Soft diagnostics render into
@@ -94,10 +95,13 @@
     };
   }
 
-  // window.renderWiremark(src, icons): called from Kotlin via executeJavaScript.
-  // `icons` is the pre-read src= map (optional; absent on surfaces/paths that
-  // don't supply one, in which case src= icons degrade to placeholders).
-  window.renderWiremark = function (src, icons) {
+  // window.renderWiremark(src, icons, theme): called from Kotlin via
+  // executeJavaScript. `icons` is the pre-read src= map (optional; absent on
+  // surfaces/paths that don't supply one, in which case src= icons degrade to
+  // placeholders). `theme` is "dark" or "light" (optional; anything else --
+  // including the legacy 1/2-arg calls -- renders light, matching core's own
+  // unknown-theme fallback).
+  window.renderWiremark = function (src, icons, theme) {
     hidePlaceholder();
 
     if (typeof window.wiremark === "undefined" || typeof window.wiremark.render !== "function") {
@@ -105,9 +109,13 @@
       return;
     }
 
+    var dark = theme === "dark";
     var result;
     try {
-      result = window.wiremark.render(src, { loadIcon: makeLoadIcon(icons) });
+      result = window.wiremark.render(src, {
+        loadIcon: makeLoadIcon(icons),
+        theme: dark ? "dark" : "light",
+      });
     } catch (e) {
       // Hard parse failure: keep the last good SVG, surface the message.
       // NOTE (dev1 contract): a thrown WiremarkError is NOT a standard Error --
@@ -121,7 +129,13 @@
 
     clearError();
     var host = el("wiremark-host");
-    if (host) host.innerHTML = result && result.svg ? result.svg : "";
+    if (host) {
+      host.innerHTML = result && result.svg ? result.svg : "";
+      // Mirror core's palette on the paper card (.wiremark-dark in
+      // wiremark-ui.css swaps the white card for core's dark paper).
+      if (dark) host.classList.add("wiremark-dark");
+      else host.classList.remove("wiremark-dark");
+    }
     renderDiagnostics(result && result.diagnostics);
   };
 })();
