@@ -10,7 +10,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@wiremark/core": "0.0.6"
+    "@wiremark/core": "0.0.7"
   },
   "devDependencies": {
     "esbuild": "0.25.12"
