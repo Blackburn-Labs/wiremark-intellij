@@ -21,6 +21,16 @@
 // on a hard parse error. We accept both `wireframe` (canonical) and `wiremark`
 // fence infos, and pass the theme detected from the page background (see
 // detectTheme) so the SVG palette follows the IDE.
+//
+// Document-scope backgrounds: core resolves `background=#id` (SPEC ss.5.1.1)
+// within a single source string -- but a markdown document spreads its frames
+// across several fences, so a fence's `background=#id` may target a frame
+// declared in a DIFFERENT fence. When any fence uses such a reference we
+// `wiremark.parse()` every fence once, index their frames by #id, and render the
+// referencing fence from a merged Document: its own frames over the referenced
+// frames pulled in as invisible backgrounds (buildDocContext /
+// resolveBackgroundDeps below). A self-contained document never parses and
+// renders exactly as it did before.
 
 (function () {
   "use strict";
@@ -195,17 +205,121 @@
     return matches[0];
   }
 
+  // A frame-level cross-frame background reference is spelled `background=#id`
+  // (the lexer makes that one keyed token; the tint enum `background=hatch`
+  // carries no `#`, and `denseBackground` no `=#`). We use this as a cheap
+  // textual gate: when NO fence in the document contains one, the entire
+  // document-scope machinery below is skipped and every fence renders standalone
+  // exactly as before -- same SVG, same cost, no parsing.
+  var FRAME_BG_REF = /background\s*=\s*#/;
+
+  // A `visible:false` shallow copy of a parsed Frame: it composes UNDERNEATH a
+  // referencing frame as a background but is never drawn standalone (core omits
+  // invisible frames from standalone output -- see layout.js/render.js). props is
+  // copied so the original parsed frame (shared with the library/parse cache) is
+  // never mutated; children are shared read-only (render never mutates them).
+  function invisibleFrame(frame) {
+    return Object.assign({}, frame, {
+      props: Object.assign({}, frame.props, { visible: false }),
+    });
+  }
+
+  // Parse every wireframe fence once and index its frames by #id, so a fence can
+  // compose a `background=#id` whose target lives in ANOTHER fence of the same
+  // markdown document. Core scopes background resolution to "the document" (SPEC
+  // ss.5.1.1); for a .md the document spans all of its wireframe fences, so we
+  // resolve across them here -- the one thing core (which sees a single fence's
+  // source at a time) cannot do itself. Returns:
+  //   library: Map<frameId, { frame, sourceHash }> -- first declaration in DOM
+  //            order wins, mirroring core's own first-wins duplicate-id rule.
+  //   docs:    Map<sourceHash, { doc, error }>      -- parse cache, reused by
+  //            resolveBackgroundDeps so each fence parses at most once per pass.
+  // Built only when at least one fence references a cross-frame background.
+  function buildDocContext(fences) {
+    var docs = new Map();
+    var library = new Map();
+    for (var i = 0; i < fences.length; i++) {
+      var f = fences[i];
+      var entry = docs.get(f.hash);
+      if (!entry) {
+        // A fence with a hard parse error contributes no library frames, but
+        // must not abort the others -- the rest of the document still composes.
+        try {
+          entry = { doc: window.wiremark.parse(f.source), error: null };
+        } catch (e) {
+          entry = { doc: null, error: e };
+        }
+        docs.set(f.hash, entry);
+      }
+      if (!entry.doc) continue;
+      var frames = entry.doc.frames || [];
+      for (var j = 0; j < frames.length; j++) {
+        var fr = frames[j];
+        if (fr.id && !library.has(fr.id)) library.set(fr.id, { frame: fr, sourceHash: f.hash });
+      }
+    }
+    return { docs: docs, library: library };
+  }
+
+  // Work out which OTHER-fence frames a fence needs as invisible backgrounds.
+  // Walks each of the fence's own frames' `background=#id` chain; any target not
+  // defined within this fence is pulled from the document library as an invisible
+  // copy. The walk is transitive (a pulled background may have its own
+  // background) and an `anchor=#el` resolves -- in core -- within that chain, so
+  // pulling the background frames is sufficient to satisfy the anchor too.
+  // Returns null when the fence did not parse (the caller then renders it
+  // standalone, which surfaces the parse error in the usual banner).
+  //   sig -- a stable signature of every cross-fence dependency (`id:sourceHash`,
+  //          or `id:?` when the target is missing document-wide). Folded into the
+  //          render key so the fence re-renders when a referenced fence's text
+  //          CHANGES, APPEARS, or DISAPPEARS -- not only when its own text does.
+  function resolveBackgroundDeps(hash, ctx) {
+    var entry = ctx.docs.get(hash);
+    if (!entry || !entry.doc) return null;
+    var ownFrames = entry.doc.frames || [];
+    var ownIds = new Set();
+    for (var i = 0; i < ownFrames.length; i++) if (ownFrames[i].id) ownIds.add(ownFrames[i].id);
+
+    var pulled = [];
+    var sig = [];
+    var seen = new Set(); // background ids already considered (terminates cycles)
+    var queue = ownFrames.slice();
+    while (queue.length) {
+      var fr = queue.shift();
+      var bg = fr.props && fr.props.background;
+      if (!bg || ownIds.has(bg) || seen.has(bg)) continue;
+      seen.add(bg);
+      var lib = ctx.library.get(bg);
+      if (!lib) { sig.push(bg + ":?"); continue; } // missing document-wide -> core warns
+      sig.push(bg + ":" + lib.sourceHash);
+      pulled.push(invisibleFrame(lib.frame));
+      queue.push(lib.frame); // follow ITS background, transitively
+    }
+    return { doc: entry.doc, pulled: pulled, sig: sig.join(",") };
+  }
+
   // Render (or re-render) a single fence under [theme]. Idempotent: safe to
-  // call every tick.
-  function renderFence(code, theme) {
+  // call every tick. [ctx] is the document frame library (or null when no fence
+  // uses a cross-frame background); [hash] is the precomputed content hash.
+  function renderFence(code, source, hash, theme, ctx) {
     var pre = preOf(code);
     if (!pre) return;
 
-    var source = sourceOf(code);
+    // Document-scope background composition: engaged only when a context exists
+    // (some fence in the doc uses a cross-frame background) AND this fence
+    // actually references one. Otherwise the legacy standalone path renders
+    // byte-for-byte as before -- a self-contained fence is never parsed twice.
+    var dep = ctx && FRAME_BG_REF.test(source) ? resolveBackgroundDeps(hash, ctx) : null;
+    var merged = dep && dep.pulled.length
+      ? { frames: dep.pulled.concat(dep.doc.frames), diagnostics: (dep.doc.diagnostics || []).slice(), flow: dep.doc.flow }
+      : null;
+
     // The theme is part of the render key: a fence rendered before the preview
     // stylesheets applied (or under an old editor scheme) self-corrects on the
-    // next pass instead of staying frozen in the wrong palette.
-    var renderKey = hashContent(source) + "-" + theme;
+    // next pass instead of staying frozen in the wrong palette. The bg(...)
+    // suffix carries the cross-fence dependency signature so a referenced
+    // background's edit/appearance/removal re-renders this fence too.
+    var renderKey = hash + "-" + theme + (dep && dep.sig ? "-bg(" + dep.sig + ")" : "");
     var pairId = pairIdOf(code);
     var host = findHost(pairId);
 
@@ -236,7 +350,12 @@
     else host.classList.remove(DARK_CLASS);
 
     try {
-      var result = window.wiremark.render(source, { theme: theme });
+      // A merged Document (this fence's frames over invisible backgrounds pulled
+      // from other fences) renders document-scoped; otherwise the raw source
+      // renders standalone, identical to the single-fence path.
+      var result = merged
+        ? window.wiremark.render(merged, { theme: theme })
+        : window.wiremark.render(source, { theme: theme });
       var svg = (result && result.svg) || "";
       host.innerHTML = svg + diagnosticsHtml(result && result.diagnostics);
       pre.classList.add(SOURCE_HIDDEN_CLASS); // hide source, keep it in the DOM
@@ -264,8 +383,27 @@
     // One detection per pass: every fence in a pass renders under one theme.
     var theme = detectTheme();
     var candidates = document.querySelectorAll(FENCE_SELECTOR);
+    // Collect this document's wireframe fences in DOM order, each with its
+    // content hash, and note whether any composes a cross-frame background.
+    var fences = [];
+    var anyCrossRef = false;
     for (var i = 0; i < candidates.length; i++) {
-      if (isWireframeFence(candidates[i])) renderFence(candidates[i], theme);
+      var code = candidates[i];
+      if (!isWireframeFence(code)) continue;
+      var source = sourceOf(code);
+      fences.push({ code: code, source: source, hash: hashContent(source) });
+      if (FRAME_BG_REF.test(source)) anyCrossRef = true;
+    }
+    // The document frame library is built only when some fence composes a
+    // cross-frame background AND the bundle exposes parse(). Without it every
+    // fence renders standalone, exactly as before (and a missing background
+    // degrades to core's soft "not found" warning, as it always has).
+    var ctx =
+      anyCrossRef && typeof window.wiremark.parse === "function"
+        ? buildDocContext(fences)
+        : null;
+    for (var k = 0; k < fences.length; k++) {
+      renderFence(fences[k].code, fences[k].source, fences[k].hash, theme, ctx);
     }
   }
 

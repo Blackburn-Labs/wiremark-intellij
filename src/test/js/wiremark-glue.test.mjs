@@ -215,12 +215,20 @@ function makeDocument() {
   };
 }
 
+// Stable, document-unique pairing id seeded onto every fence's <code>. In a real
+// browser the glue's nextPairId persists for the panel's lifetime and assigns
+// monotonic ids; re-running the IIFE in a test (our "next observer tick") resets
+// that counter, so a fence ADDED between ticks would otherwise collide with an
+// existing id. Pre-seeding here reproduces the real monotonic-id invariant.
+let fenceUid = 1000;
+
 // Build: <pre data-line=N><code class="language-X">SOURCE</code></pre>, attached to body.
 function addFence(doc, lang, source, dataLine) {
   const pre = new Element("pre");
   if (dataLine != null) pre.setAttribute("data-line", String(dataLine));
   const code = new Element("code");
   code.setAttribute("class", "language-" + lang);
+  code.setAttribute("data-wiremark-id", String(fenceUid++));
   code.textContent = source;
   pre.appendChild(code);
   doc.body.appendChild(pre);
@@ -262,6 +270,66 @@ function runGlue(doc, wiremark, opts) {
 function hostAfter(pre) {
   const next = pre.nextElementSibling;
   return next && next.classList.contains("wiremark-host") ? next : null;
+}
+
+// --- Cross-fence (document-scope background) mock -------------------------
+//
+// The glue's document-scope path calls window.wiremark.parse(source) to index
+// every fence's frames by #id, then renders a referencing fence from a merged
+// Document. These tests need a parse() too, so we provide a tiny faithful stand-
+// in: it reads `Wireframe #id [background=#bg] [anchor=#a]` lines into frames the
+// way core would (id is the bare #token; background/anchor are keyed). render()
+// distinguishes a raw source string (standalone) from a merged Document object,
+// recording each call so tests can assert exactly what the glue assembled.
+function makeWiremark() {
+  const calls = [];
+  let parseCount = 0;
+  function parse(source) {
+    parseCount++;
+    if (/THROW/.test(source)) throw new Error("bad wireframe (line 1)");
+    const frames = [];
+    for (const raw of String(source).split("\n")) {
+      const line = raw.trim();
+      if (line.slice(0, 9) !== "Wireframe") continue;
+      const props = {};
+      let rest = line;
+      const bg = /background\s*=\s*#([A-Za-z0-9_-]+)/.exec(rest);
+      if (bg) { props.background = bg[1]; rest = rest.replace(bg[0], ""); }
+      const an = /anchor\s*=\s*#([A-Za-z0-9_-]+)/.exec(rest);
+      if (an) { props.anchor = an[1]; rest = rest.replace(an[0], ""); }
+      const id = /#([A-Za-z0-9_-]+)/.exec(rest);
+      const frame = { props, children: [], line: 1 };
+      if (id) frame.id = id[1];
+      frames.push(frame);
+    }
+    return { frames, diagnostics: [], flow: undefined };
+  }
+  function render(input, opts) {
+    const theme = opts && opts.theme;
+    if (typeof input === "string") {
+      // Real core re-parses a source string, so a hard error surfaces here too.
+      if (/THROW/.test(input)) throw new Error("bad wireframe (line 1)");
+      calls.push({ kind: "source", source: input, theme });
+      return { svg: "<svg data-src='" + input.length + "'/>", diagnostics: [] };
+    }
+    // Merged Document: tag each frame id, prefixing "~" for an invisible (pulled
+    // background) frame, so a test reads the composition order at a glance.
+    // Array.from rehomes the vm-realm `input.frames` into THIS realm so the
+    // resulting `ids` deepStrictEqual-compares against a plain test-realm array.
+    const ids = Array.from(input.frames, (f) =>
+      (f.props && f.props.visible === false ? "~" : "") + (f.id || "?"),
+    );
+    calls.push({ kind: "doc", ids, frames: input.frames, theme });
+    return { svg: "<svg data-doc='" + ids.join(",") + "'/>", diagnostics: input.diagnostics || [] };
+  }
+  return {
+    parse,
+    render,
+    calls,
+    docRenders: () => calls.filter((c) => c.kind === "doc"),
+    sourceRenders: () => calls.filter((c) => c.kind === "source"),
+    parseCount: () => parseCount,
+  };
 }
 
 // --- Tests ----------------------------------------------------------------
@@ -630,4 +698,188 @@ test("does not inject any <style> (styling moved to the shared wiremark-ui.css)"
     0,
     "glue injects no <style>",
   );
+});
+
+// --- Document-scope backgrounds (cross-fence `background=#id`) -------------
+
+test("a fence composes a background declared in another fence (merged, invisible target)", () => {
+  // The whole point: block 2's `background=#layout` targets a frame in block 1.
+  const doc = makeDocument();
+  const { pre: layoutPre } = addFence(doc, "wiremark", "Wireframe #layout\n  Button 'File'");
+  const { pre: dialogPre } = addFence(doc, "wiremark", "Wireframe #dialog background=#layout anchor=#editor");
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  // The defining fence renders standalone (no cross-frame reference of its own).
+  assert.deepEqual(wm.sourceRenders().map((c) => c.source), ["Wireframe #layout\n  Button 'File'"]);
+  // The referencing fence renders from a merged Document: the pulled #layout
+  // first (invisible) then its own visible #dialog.
+  const docRenders = wm.docRenders();
+  assert.equal(docRenders.length, 1, "exactly one merged render (the referencing fence)");
+  assert.deepEqual(docRenders[0].ids, ["~layout", "dialog"]);
+  assert.match(hostAfter(dialogPre).innerHTML, /data-doc='~layout,dialog'/);
+  // And the defining fence's host shows its standalone SVG, source hidden.
+  assert.match(hostAfter(layoutPre).innerHTML, /data-src=/);
+  assert.ok(layoutPre.classList.contains("wiremark-source-hidden"));
+  assert.ok(dialogPre.classList.contains("wiremark-source-hidden"));
+});
+
+test("the pulled background frame is a visible:false copy (the original is not mutated)", () => {
+  const doc = makeDocument();
+  addFence(doc, "wiremark", "Wireframe #layout");
+  addFence(doc, "wiremark", "Wireframe #dialog background=#layout");
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  const merged = wm.docRenders()[0];
+  const pulled = merged.frames.find((f) => f.id === "layout");
+  assert.equal(pulled.props.visible, false, "pulled background frame is invisible");
+  // The defining fence still rendered standalone (its frame stayed visible there):
+  // proof the library frame was copied, not flipped to invisible in place.
+  assert.equal(wm.sourceRenders().length, 1);
+});
+
+test("a self-contained document never parses and renders every fence standalone", () => {
+  // No fence uses `background=#id`, so the document-scope machinery stays off and
+  // parse() is never called -- byte-identical to the legacy single-fence path.
+  const doc = makeDocument();
+  addFence(doc, "wiremark", "Wireframe #a\n  Button 'x'");
+  addFence(doc, "wiremark", "Wireframe #b\n  Button 'y'");
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  assert.equal(wm.parseCount(), 0, "no parse for a document with no cross-frame background");
+  assert.equal(wm.docRenders().length, 0, "no merged renders");
+  assert.equal(wm.sourceRenders().length, 2, "both fences render standalone");
+});
+
+test("an internal background (target in the same fence) does not pull or merge", () => {
+  // A multi-frame fence whose `background=#a` resolves within itself stays a
+  // standalone render -- the merge path is only for genuinely cross-fence refs.
+  const doc = makeDocument();
+  const { pre } = addFence(doc, "wiremark", "Wireframe #a\nWireframe #b background=#a");
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  assert.equal(wm.docRenders().length, 0, "no merged render for an internal reference");
+  assert.equal(wm.sourceRenders().length, 1, "the fence renders standalone from its source");
+  assert.match(hostAfter(pre).innerHTML, /data-src=/);
+});
+
+test("a transitive chain pulls every ancestor background, deepest included", () => {
+  const doc = makeDocument();
+  addFence(doc, "wiremark", "Wireframe #base");
+  addFence(doc, "wiremark", "Wireframe #mid background=#base");
+  const { pre: topPre } = addFence(doc, "wiremark", "Wireframe #top background=#mid");
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  // #top's merged doc carries both #mid and #base as invisible backgrounds.
+  const top = wm.docRenders().find((c) => c.ids.indexOf("top") !== -1);
+  assert.deepEqual(top.ids, ["~mid", "~base", "top"]);
+  assert.match(hostAfter(topPre).innerHTML, /data-doc='~mid,~base,top'/);
+});
+
+test("a background referenced twice in one fence is pulled only once", () => {
+  const doc = makeDocument();
+  addFence(doc, "wiremark", "Wireframe #base");
+  const { pre } = addFence(
+    doc,
+    "wiremark",
+    "Wireframe #a background=#base\nWireframe #b background=#base",
+  );
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  const merged = wm.docRenders().find((c) => c.ids.indexOf("a") !== -1);
+  assert.deepEqual(merged.ids, ["~base", "a", "b"], "single invisible #base, then both own frames");
+});
+
+test("a missing background renders standalone, then re-renders when the target appears", () => {
+  const doc = makeDocument();
+  const { pre: dialogPre, code: dialogCode } = addFence(
+    doc,
+    "wiremark",
+    "Wireframe #dialog background=#layout",
+  );
+  const wm = makeWiremark();
+  const sandbox = runGlue(doc, wm);
+
+  // #layout is absent: the fence renders standalone (core would warn "not found").
+  assert.equal(wm.docRenders().length, 0);
+  assert.equal(wm.sourceRenders().length, 1);
+  const missingHash = dialogCode.getAttribute("data-wiremark-hash");
+  assert.match(missingHash, /layout:\?/, "render key records the unresolved reference");
+
+  // The target frame appears in a new fence; ticking again must re-render #dialog
+  // (its dependency signature flips from `layout:?` to `layout:<hash>`).
+  addFence(doc, "wiremark", "Wireframe #layout");
+  vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
+
+  assert.equal(wm.docRenders().length, 1, "#dialog re-rendered as a merged document");
+  assert.deepEqual(wm.docRenders()[0].ids, ["~layout", "dialog"]);
+  assert.notEqual(
+    dialogCode.getAttribute("data-wiremark-hash"),
+    missingHash,
+    "render key changed once the background resolved",
+  );
+  assert.match(hostAfter(dialogPre).innerHTML, /data-doc='~layout,dialog'/);
+});
+
+test("editing the referenced fence re-renders the referencing fence", () => {
+  const doc = makeDocument();
+  const { code: layoutCode } = addFence(doc, "wiremark", "Wireframe #layout");
+  const { pre: dialogPre, code: dialogCode } = addFence(
+    doc,
+    "wiremark",
+    "Wireframe #dialog background=#layout",
+  );
+  const wm = makeWiremark();
+  const sandbox = runGlue(doc, wm);
+  assert.equal(wm.docRenders().length, 1, "first pass merges once");
+  const firstKey = dialogCode.getAttribute("data-wiremark-hash");
+
+  // Edit ONLY the layout fence (the dialog's text is untouched). The dialog must
+  // still re-render because its key folds in the referenced frame's source hash.
+  layoutCode.textContent = "Wireframe #layout\n  Button 'added'";
+  vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
+
+  assert.equal(wm.docRenders().length, 2, "the dialog re-merged after the background changed");
+  assert.notEqual(
+    dialogCode.getAttribute("data-wiremark-hash"),
+    firstKey,
+    "dialog render key changed because its background's hash changed",
+  );
+  assert.match(hostAfter(dialogPre).innerHTML, /data-doc='~layout,dialog'/);
+});
+
+test("an unchanged cross-fence document is idempotent (no re-render on the next tick)", () => {
+  const doc = makeDocument();
+  addFence(doc, "wiremark", "Wireframe #layout");
+  addFence(doc, "wiremark", "Wireframe #dialog background=#layout");
+  const wm = makeWiremark();
+  const sandbox = runGlue(doc, wm);
+  const calls1 = wm.calls.length;
+
+  // A second observer tick with nothing changed must not re-render anything.
+  vm.runInContext(glueSource, sandbox, { filename: "wiremark-glue.js" });
+  assert.equal(wm.calls.length, calls1, "no extra render calls on an unchanged tick");
+});
+
+test("a fence that fails to parse still lets the rest of the document compose", () => {
+  // A broken fence contributes no library frames and shows its own error banner,
+  // but must not abort the document library the other fences rely on.
+  const doc = makeDocument();
+  const { pre: badPre } = addFence(doc, "wiremark", "Wireframe #broken THROW background=#x");
+  addFence(doc, "wiremark", "Wireframe #layout");
+  const { pre: dialogPre } = addFence(doc, "wiremark", "Wireframe #dialog background=#layout");
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  // The broken fence: source stays visible, error banner shown (on the host).
+  assert.ok(hostAfter(badPre).classList.contains("wiremark-error"));
+  assert.ok(!badPre.classList.contains("wiremark-source-hidden"));
+  // The healthy cross-fence pair still composes.
+  assert.deepEqual(wm.docRenders().map((c) => c.ids), [["~layout", "dialog"]]);
+  assert.ok(dialogPre.classList.contains("wiremark-source-hidden"));
 });
