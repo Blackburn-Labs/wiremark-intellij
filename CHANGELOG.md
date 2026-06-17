@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Theme-aware preview: the rendered wireframe now follows the active IDE theme, displaying with a dark palette under dark IDE themes instead of always rendering on a light card. This applies to both the `*.wiremark` split editor and the Markdown preview, and re-renders live when you switch the IDE look-and-feel. (Completes the dark-theme support anticipated in 0.1.1, now that the bundled engine's `theme` render option is wired to IDE-theme detection.)
+- Cross-block backgrounds in the Markdown preview: a `Wireframe ... background=#id` in one fenced `wiremark` / `wireframe` block can now use a wireframe declared in a different block of the same document as its background (and resolve an `anchor=#id` against it). Previously each fence rendered in isolation, so such a reference produced a "background frame not found" warning and rendered without the background. Self-contained documents are unaffected and render exactly as before.
+
+### Changed
+
+- Updated the bundled `@wiremark/core` rendering engine to 0.0.7 (adds keyless `Wireframe` direction such as `Wireframe ... row`, plus new components and connector-routing/spacing refinements).
+
 ## [0.1.1]
 
 ### Changed
