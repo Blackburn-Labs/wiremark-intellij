@@ -310,8 +310,14 @@
     // actually references one. Otherwise the legacy standalone path renders
     // byte-for-byte as before -- a self-contained fence is never parsed twice.
     var dep = ctx && FRAME_BG_REF.test(source) ? resolveBackgroundDeps(hash, ctx) : null;
+    // Copy every document-level field (flow, font, ...) and override only the
+    // frames and diagnostics, so a fence's own `Font` / `Flow` line still applies
+    // when it is composed over backgrounds from other fences.
     var merged = dep && dep.pulled.length
-      ? { frames: dep.pulled.concat(dep.doc.frames), diagnostics: (dep.doc.diagnostics || []).slice(), flow: dep.doc.flow }
+      ? Object.assign({}, dep.doc, {
+          frames: dep.pulled.concat(dep.doc.frames),
+          diagnostics: (dep.doc.diagnostics || []).slice(),
+        })
       : null;
 
     // The theme is part of the render key: a fence rendered before the preview

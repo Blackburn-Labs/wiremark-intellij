@@ -288,8 +288,12 @@ function makeWiremark() {
     parseCount++;
     if (/THROW/.test(source)) throw new Error("bad wireframe (line 1)");
     const frames = [];
+    let font;
     for (const raw of String(source).split("\n")) {
       const line = raw.trim();
+      // Document-level `Font "Family"` directive (core 0.2.0) -> doc.font.
+      const fm = /^Font\s+"([^"]*)"/.exec(line);
+      if (fm) { font = { family: fm[1] }; continue; }
       if (line.slice(0, 9) !== "Wireframe") continue;
       const props = {};
       let rest = line;
@@ -302,7 +306,7 @@ function makeWiremark() {
       if (id) frame.id = id[1];
       frames.push(frame);
     }
-    return { frames, diagnostics: [], flow: undefined };
+    return { frames, diagnostics: [], flow: undefined, font };
   }
   function render(input, opts) {
     const theme = opts && opts.theme;
@@ -319,7 +323,7 @@ function makeWiremark() {
     const ids = Array.from(input.frames, (f) =>
       (f.props && f.props.visible === false ? "~" : "") + (f.id || "?"),
     );
-    calls.push({ kind: "doc", ids, frames: input.frames, theme });
+    calls.push({ kind: "doc", ids, frames: input.frames, font: input.font, theme });
     return { svg: "<svg data-doc='" + ids.join(",") + "'/>", diagnostics: input.diagnostics || [] };
   }
   return {
@@ -737,6 +741,21 @@ test("the pulled background frame is a visible:false copy (the original is not m
   // The defining fence still rendered standalone (its frame stayed visible there):
   // proof the library frame was copied, not flipped to invisible in place.
   assert.equal(wm.sourceRenders().length, 1);
+});
+
+test("a merged render keeps the fence's own document-level Font directive", () => {
+  // Core 0.2.0 parses `Font "X"` into doc.font; composing over a pulled
+  // background must not drop it (or any other document-level field).
+  const doc = makeDocument();
+  addFence(doc, "wiremark", "Wireframe #layout");
+  addFence(doc, "wiremark", 'Font "Georgia"\nWireframe #dialog background=#layout');
+  const wm = makeWiremark();
+  runGlue(doc, wm);
+
+  const merged = wm.docRenders();
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].ids, ["~layout", "dialog"]);
+  assert.equal(merged[0].font && merged[0].font.family, "Georgia");
 });
 
 test("a self-contained document never parses and renders every fence standalone", () => {

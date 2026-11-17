@@ -11,7 +11,8 @@
 
 ### Changed
 
-- Updated the bundled `@wiremark/core` rendering engine to 0.0.7 (adds keyless `Wireframe` direction such as `Wireframe ... row`, plus new components and connector-routing/spacing refinements).
+- Updated the bundled `@wiremark/core` rendering engine to 0.2.0 (via 0.0.7 and 0.1.0). Wireframe text now renders in Comic Neue, embedded in the SVG so it looks the same whether or not the font is installed, and a document-level `Font "Family" [width=N] [leading=N]` line selects a custom font family. Also brings keyless `Wireframe` direction such as `Wireframe ... row`, a universal `background=` / `denseBackground` / `opaque` backdrop on elements, `Img` alt-text captions, a `MenuItem` `icon`, and connector-routing/spacing refinements.
+- The `*.wiremark` preview's Content Security Policy now allows `data:` fonts (`font-src data:`) so the embedded font loads; it remains closed to network sources. The Markdown preview's own policy already allowed them.
 
 ## [0.1.1]
 

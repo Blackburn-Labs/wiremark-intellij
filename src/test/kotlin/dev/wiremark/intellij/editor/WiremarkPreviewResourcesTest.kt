@@ -20,6 +20,18 @@ class WiremarkPreviewResourcesTest {
     }
 
     @Test
+    fun `preview csp allows embedded data fonts but stays closed to the network`() {
+        // Core 0.2.0 embeds its sketch font as an @font-face data: URL in every SVG.
+        val template = javaClass.getResource("/web/wiremark-preview.html")!!.readText()
+        val csp = Regex("""Content-Security-Policy"\s+content="([^"]*)"""").find(template)
+            ?.groupValues?.get(1)
+        requireNotNull(csp) { "preview html must declare a CSP" }
+        assertTrue("CSP must start from default-src 'none'", csp.contains("default-src 'none'"))
+        assertTrue("CSP must allow data: fonts", csp.contains("font-src data:;"))
+        assertFalse("CSP must not allow network sources", Regex("https?:|\\*").containsMatchIn(csp))
+    }
+
+    @Test
     fun `assembled document wires the preview entry point when the bundle is present`() {
         // The generated core bundle is on the classpath once processResources has
         // run (a dependency of `check`). If it isn't present in this run, the
